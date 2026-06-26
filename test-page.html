@@ -214,10 +214,12 @@
       const TEST_TONE_SECONDS = 8;
       const PULSE_INTERVAL_MS = 8000;
       const DEMO_STEP_MS = 8000;
+      const VOLUME_RAMP_MS = 45;
       const QUIET_AMPLITUDE = 0.001;
       const LOUD_AMPLITUDE = 0.01001186529700907;
       const VERY_LOUD_AMPLITUDE = 1;
       const currentUrls = new Map();
+      const volumeRampTimers = new WeakMap();
       let pulseTimer;
       let demoTimer;
       let countdownTimer;
@@ -288,9 +290,12 @@
       });
 
       function stopMedia(media) {
+        const rampTimer = volumeRampTimers.get(media);
+        if (rampTimer) {
+          cancelAnimationFrame(rampTimer);
+          volumeRampTimers.delete(media);
+        }
         media.pause();
-        media.removeAttribute("src");
-        media.load();
       }
 
       function releaseMediaUrl(media) {
@@ -298,6 +303,44 @@
         if (!currentUrl) return;
         URL.revokeObjectURL(currentUrl);
         currentUrls.delete(media);
+      }
+
+      function ensureMediaSource(media) {
+        if (currentUrls.has(media)) return;
+        const nextUrl = URL.createObjectURL(createSineWaveBlob(440, 1, TEST_TONE_SECONDS));
+        currentUrls.set(media, nextUrl);
+        media.src = nextUrl;
+        media.loop = true;
+      }
+
+      function rampMediaVolume(media, targetVolume, durationMs = VOLUME_RAMP_MS) {
+        const previousTimer = volumeRampTimers.get(media);
+        if (previousTimer) {
+          cancelAnimationFrame(previousTimer);
+        }
+
+        const startVolume = media.paused ? 0 : media.volume;
+        const startedAt = performance.now();
+        media.volume = startVolume;
+
+        return new Promise((resolve) => {
+          function step(now) {
+            const progress = Math.min(1, (now - startedAt) / durationMs);
+            const eased = (1 - Math.cos(Math.PI * progress)) / 2;
+            media.volume = startVolume + (targetVolume - startVolume) * eased;
+
+            if (progress < 1) {
+              volumeRampTimers.set(media, requestAnimationFrame(step));
+              return;
+            }
+
+            media.volume = targetVolume;
+            volumeRampTimers.delete(media);
+            resolve();
+          }
+
+          volumeRampTimers.set(media, requestAnimationFrame(step));
+        });
       }
 
       async function playLevel(media, amplitude, label, keepPulse) {
@@ -308,18 +351,12 @@
         }
         const otherMedia = media === audio ? rawAudio : audio;
         stopMedia(otherMedia);
-        releaseMediaUrl(otherMedia);
-        stopMedia(media);
-        releaseMediaUrl(media);
-        const nextUrl = URL.createObjectURL(createSineWaveBlob(440, amplitude, TEST_TONE_SECONDS));
-        currentUrls.set(media, nextUrl);
-        media.src = nextUrl;
-        media.loop = true;
-        media.volume = 1;
+        ensureMediaSource(media);
         status.textContent = label;
 
         try {
           await media.play();
+          await rampMediaVolume(media, amplitude);
         } catch (error) {
           status.textContent = `${label} - lecture bloquée, clique à nouveau`;
           console.warn("StreamVolume Guard test audio playback was blocked", error);
@@ -412,6 +449,10 @@
         clearInterval(countdownTimer);
         stopMedia(audio);
         stopMedia(rawAudio);
+        audio.removeAttribute("src");
+        rawAudio.removeAttribute("src");
+        audio.load();
+        rawAudio.load();
         releaseMediaUrl(audio);
         releaseMediaUrl(rawAudio);
         status.textContent = "stop";

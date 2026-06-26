@@ -9,6 +9,7 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 ### Ajouté
 
 - Builds prêts à tester pour Chromium, Firefox, Firefox Android et source Safari.
+- Notes de release publiques réutilisables dans `store/release-0.1.2.md`.
 - Fallback manuel `Capture onglet` sur Chromium desktop avec document offscreen.
 - Mode Panic pour baisser immédiatement le niveau d'un onglet actif.
 - Profils recommandés par plateforme : YouTube, Twitch, TikTok, Kick, Spotify web et Deezer web.
@@ -26,7 +27,10 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 - Application explicite des réglages via le bouton `Appliquer les réglages`, avec retour visuel après envoi aux onglets ouverts.
 - Propagation des changements de cible RMS aux onglets déjà traités.
 - Stabilisation de l'égalisation entre les sons faible, fort et très fort sur la page de test.
+- Ajout de micro-rampes de volume sur la page de test et dans le pipeline audio pour réduire les clics entre les niveaux.
 - Remise à zéro rapide de la correction de sortie après un gros changement de niveau, pour éviter qu'un son faible reste trop bas après un son très fort.
+- Alignement du champ `Cible RMS dB` avec la limite réelle `-14 dB` déjà appliquée par le slider.
+- Restriction du message local `WLG_TEST_PAGE_STATUS` à l'origine de la page de test au lieu d'un `postMessage` global.
 - Protection contre le double traitement d'un meme element audio ou video.
 - Respect des domaines exclus, y compris avec la capture d'onglet.
 - Arret de la capture d'onglet lors d'une navigation ou fermeture d'onglet.

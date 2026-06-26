@@ -238,6 +238,16 @@ test("limiter gain never boosts above unity", () => {
   assert.ok(WLG.Limiter.computeLimiterGain(2, -1) > 0);
 });
 
+test("safety limiter does not attenuate the whole signal by default", () => {
+  const limiterSource = fs.readFileSync(path.join(root, "audio", "limiter.js"), "utf8");
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+
+  assert.match(limiterSource, /ceilingGain\.gain\.value = 1/);
+  assert.match(normalizerSource, /limiter\.ceilingGain\.gain\.value = 1/);
+  assert.doesNotMatch(limiterSource, /ceilingGain\.gain\.value = Analyser\.dbToLinear/);
+  assert.doesNotMatch(normalizerSource, /limiter\.ceilingGain\.gain\.value = Analyser\.dbToLinear/);
+});
+
 test("platform profiles recommend streamer-first defaults", () => {
   const WLG = loadCore();
   const settings = WLG.Settings.normalizeSettings({});
@@ -397,12 +407,28 @@ test("public test page locks the approved test sound levels", () => {
     assert.ok(Math.abs(rmsDb - expected.rmsDb) <= 0.1, `${name} RMS should stay locked`);
   });
 });
-test("public test page restarts the selected media before changing level", () => {
+test("public test page keeps a continuous media source before changing level", () => {
   const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
   const playLevelBody = html.match(/async function playLevel\(media, amplitude, label, keepPulse\) \{([\s\S]*?)\n\n      async function playDemoSequence/);
 
   assert.ok(playLevelBody, "playLevel should exist");
-  assert.match(playLevelBody[1], /stopMedia\(media\);[\s\S]*releaseMediaUrl\(media\);[\s\S]*media\.src = nextUrl;/);
+  assert.match(html, /function ensureMediaSource\(media\)/);
+  assert.match(html, /function rampMediaVolume\(media, targetVolume/);
+  assert.match(playLevelBody[1], /ensureMediaSource\(media\)/);
+  assert.match(playLevelBody[1], /await rampMediaVolume\(media, amplitude\)/);
+  assert.doesNotMatch(playLevelBody[1], /media\.src = nextUrl/);
+  assert.doesNotMatch(playLevelBody[1], /stopMedia\(media\)/);
+});
+
+test("public test page de-clicks manual level changes with a short volume ramp", () => {
+  const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
+
+  assert.match(html, /const VOLUME_RAMP_MS = 45;/);
+  assert.match(html, /const volumeRampTimers = new WeakMap\(\);/);
+  assert.match(html, /function rampMediaVolume\(media, targetVolume/);
+  assert.match(html, /requestAnimationFrame\(step\)/);
+  assert.match(html, /Math\.cos\(Math\.PI \* progress\)/);
+  assert.doesNotMatch(html, /media\.volume = amplitude;/);
 });
 test("public test page reports the selected level before awaiting playback", () => {
   const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
@@ -617,7 +643,7 @@ test("normalizer uses held risk state and reports immediately on new risky spike
   assert.match(source, /StreamStatus\.nextRiskState\({[\s\S]*peakDb:\s*lastPeakDb,/);
   assert.match(source, /previousRiskUntilMs:\s*riskUntilMs/);
   assert.match(source, /riskUntilMs = processingEnabled \? risk\.riskUntilMs : 0;/);
-  assert.match(source, /report\(riskLevel === "risky" && !wasRisky\);/);
+  assert.match(source, /report\(\(levelJumped \|\| outputWouldOvershoot\) \|\| \(riskLevel === "risky" && !wasRisky\)\);/);
 });
 
 test("popup refreshes status frequently while open for responsive stream state", () => {
@@ -693,7 +719,8 @@ test("content publishes safe live status only to the local test page", () => {
   assert.match(contentSource, /outputRmsDb: state\.outputRmsDb/);
   assert.match(contentSource, /maxBoostDb: state\.maxBoostDb/);
   assert.match(contentSource, /root\.postMessage/);
-  assert.doesNotMatch(contentSource, /root\.postMessage\(\{ type: "WLG_TEST_PAGE_STATUS" \}, "\*"\)/);
+  assert.match(contentSource, /root\.location\.origin/);
+  assert.doesNotMatch(contentSource, /root\.postMessage\([\s\S]*,\s*"\*"\)/);
 });
 
 test("normalizer measures post-chain output RMS separately from raw RMS", () => {
@@ -714,9 +741,10 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
   assert.match(normalizerSource, /let outputTrimGain = null;/);
   assert.match(normalizerSource, /let currentOutputTrimDb = 0;/);
   assert.match(normalizerSource, /function updateOutputTrim\(measuredOutputRmsDb, elapsedMs\)/);
-  assert.match(normalizerSource, /currentOutputTrimDb \+ correctionDb/);
   assert.match(normalizerSource, /Math\.abs\(correctionDb\) < 0\.12/);
-  assert.match(normalizerSource, /Analyser\.clamp\(currentOutputTrimDb \+ correctionDb, -12, 6\)/);
+  assert.match(normalizerSource, /const correctionStepDb = Analyser\.clamp\(correctionDb \* 0\.35, -2\.5, 2\.5\)/);
+  assert.match(normalizerSource, /Analyser\.clamp\(currentOutputTrimDb \+ correctionStepDb, -12, 6\)/);
+  assert.doesNotMatch(normalizerSource, /currentOutputTrimDb \+ correctionDb/);
   assert.match(normalizerSource, /wetGain\.connect\(outputTrimGain\);[\s\S]*outputTrimGain\.connect\(outputGain\);/);
   assert.match(normalizerSource, /outputTrimGain\.gain\.setTargetAtTime/);
 });
@@ -725,16 +753,50 @@ test("normalizer resets stale state and snaps gain on large input level jumps", 
   const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
 
   assert.match(normalizerSource, /let previousInputRmsDb = Analyser\.MIN_DB;/);
-  assert.match(normalizerSource, /function resetOutputTrim\(timeConstant\)/);
+  assert.match(normalizerSource, /let outputTrimHoldUntilMs = 0;/);
+  assert.match(normalizerSource, /function resetOutputTrim\(timeConstant, snap\)/);
   assert.match(normalizerSource, /function handleLevelJump\(nextRmsDb\)/);
   assert.match(normalizerSource, /Math\.abs\(nextRmsDb - previousInputRmsDb\)/);
   assert.match(normalizerSource, /if \(inputJumpDb >= 12\)/);
-  assert.match(normalizerSource, /resetOutputTrim\(0\.012\)/);
+  assert.match(normalizerSource, /resetOutputTrim\(0\.012, true\)/);
+  assert.match(normalizerSource, /outputTrimHoldUntilMs = context\.currentTime \* 1000 \+ 900/);
+  assert.match(normalizerSource, /now \* 1000 < outputTrimHoldUntilMs/);
+  assert.match(normalizerSource, /const predictedOutputBeforeSmoothingDb = lastRmsDb \+ currentGainDb \+ currentOutputTrimDb/);
+  assert.match(normalizerSource, /predictedOutputBeforeSmoothingDb > profile\.targetRmsDb \+ 1\.2/);
+  assert.match(normalizerSource, /levelJumped \|\| outputWouldOvershoot/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
+  assert.match(normalizerSource, /function duckTransitionOutput\(now, shouldDuck\)/);
+  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
+  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ 0\.028, 0\.04\)/);
+  assert.match(normalizerSource, /const shouldDuckTransition = processingEnabled[\s\S]*targetGainDb < currentGainDb - 1/);
+  assert.match(normalizerSource, /duckTransitionOutput\(now, shouldDuckTransition\)/);
+  assert.match(normalizerSource, /currentGainDb = targetGainDb;/);
+  assert.match(normalizerSource, /const heldLinearGain = Analyser\.dbToLinear\(currentGainDb\)/);
+  assert.doesNotMatch(normalizerSource, /const holdCorrectionDb/);
+  assert.doesNotMatch(normalizerSource, /currentGainDb \+=/);
+  assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
   assert.match(normalizerSource, /const levelJumped = handleLevelJump\(lastRmsDb\)/);
   assert.match(normalizerSource, /currentGainDb = levelJumped[\s\S]*\? targetGainDb/);
   assert.match(normalizerSource, /function cancelScheduledValues\(param\)/);
-  assert.match(normalizerSource, /cancelScheduledValues\(autoGain\.gain\)/);
-  assert.match(normalizerSource, /autoGain\.gain\.setValueAtTime\(linearGain, context\.currentTime\)/);
+  assert.match(normalizerSource, /cancelAndHoldAtTime/);
+  assert.match(normalizerSource, /function rampParamToValue\(param, value, rampSeconds\)[\s\S]*cancelScheduledValues\(param\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
+  assert.match(normalizerSource, /report\(\(levelJumped \|\| outputWouldOvershoot\) \|\|/);
+});
+
+test("normalizer de-clicks transition gain changes with short ramps", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+
+  assert.match(normalizerSource, /function rampParamToValue\(param, value, rampSeconds\)/);
+  assert.match(normalizerSource, /cancelScheduledValues\(param\)/);
+  assert.match(normalizerSource, /if \(typeof param\.setValueAtTime === "function"\)/);
+  assert.match(normalizerSource, /linearRampToValueAtTime\(value, context\.currentTime \+ rampSeconds\)/);
+  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
+  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ 0\.028, 0\.04\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, heldLinearGain, 0\.012\)/);
+  assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
+  assert.doesNotMatch(normalizerSource, /wetGain\.gain\.setValueAtTime\(0\.18, now\)/);
 });
 
 test("normalizer keeps the limiter internal audio path connected", () => {
@@ -1204,6 +1266,7 @@ test("options expose a target loudness slider with local audio preview", () => {
 
   assert.match(html, /id="targetRmsSlider"/);
   assert.match(html, /id="targetRmsSlider" type="range" min="-36" max="-14" step="0\.5"/);
+  assert.match(html, /id="targetRmsDb" type="number" min="-36" max="-14" step="0\.5"/);
   assert.match(html, /id="targetRmsDisplay"/);
   assert.match(html, /id="playTargetPreviewButton"/);
   assert.match(html, /id="stopTargetPreviewButton"/);

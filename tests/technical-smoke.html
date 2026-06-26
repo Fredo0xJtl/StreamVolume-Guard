@@ -104,19 +104,18 @@
       }
 
       async function ensureAudioElement() {
-        return playSmokeAudio(0.9, 2);
+        return playSmokeAudio(0.9, 8);
       }
 
       async function playSmokeAudio(amplitude, durationSeconds) {
         const audio = document.getElementById("smokeAudio");
-        if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
+        if (!objectUrl) {
+          objectUrl = URL.createObjectURL(createSineWaveBlob(440, 1, durationSeconds || 8));
+          audio.src = objectUrl;
+          audio.loop = true;
         }
 
-        objectUrl = URL.createObjectURL(createSineWaveBlob(440, amplitude, durationSeconds || 8));
-        audio.src = objectUrl;
-        audio.loop = true;
-        audio.volume = 1;
+        audio.volume = amplitude;
         await audio.play();
         return audio;
       }
@@ -287,6 +286,16 @@
 
           for (const level of equalizationLevels) {
             await playSmokeAudio(level.amplitude, 8);
+            await waitFor(() => {
+              const status = WLG.Content.getStatus();
+              return Math.abs(status.rmsDb - level.expectedRmsDb) <= 3.5 ? status : null;
+            }, `${level.name} input detected`, 1200);
+            await waitFor(() => {
+              const status = WLG.Content.getStatus();
+              const outputDeltaDb = Math.abs(status.outputRmsDb - status.targetRmsDb);
+              return outputDeltaDb <= 0.85 ? status : null;
+            }, `${level.name} output de-clicked`, 2500);
+            const earlyStats = await collectSettledOutputStats(900);
             const levelStatus = await waitFor(() => {
               const status = WLG.Content.getStatus();
               const outputDeltaDb = Math.abs(status.outputRmsDb - status.targetRmsDb);
@@ -303,6 +312,16 @@
                 ? status
                 : null;
             }, `${level.name} output near target`, 10000);
+            if (
+              Math.abs(earlyStats.averageOutputRmsDb - levelStatus.targetRmsDb) > 0.85 ||
+              earlyStats.minOutputRmsDb < levelStatus.targetRmsDb - 1.2
+            ) {
+              throw new Error(
+                `${level.name} carries stale gain at the start: avg=${earlyStats.averageOutputRmsDb} dB ` +
+                `min=${earlyStats.minOutputRmsDb} dB max=${earlyStats.maxOutputRmsDb} dB ` +
+                `target=${levelStatus.targetRmsDb} dB`
+              );
+            }
             await wait(2200);
             const settledStats = await collectSettledOutputStats(1800);
             const settledDeltaDb = Math.abs(settledStats.averageOutputRmsDb - levelStatus.targetRmsDb);
@@ -318,6 +337,7 @@
               gainDb: levelStatus.gainDb,
               outputRmsDb: levelStatus.outputRmsDb,
               deltaDb: Number(Math.abs(levelStatus.outputRmsDb - levelStatus.targetRmsDb).toFixed(2)),
+              earlyStats,
               settledStats
             });
           }

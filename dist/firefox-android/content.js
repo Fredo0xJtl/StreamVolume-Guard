@@ -80,7 +80,7 @@
         excluded: state.excluded,
         updatedAt: state.updatedAt
       }
-    }, "*");
+    }, root.location.origin);
   }
 
   function candidateMediaElements() {

@@ -39,15 +39,15 @@
   function configureLimiter(limiter, ceilingDb) {
     const ceiling = Number.isFinite(Number(ceilingDb)) ? Number(ceilingDb) : Limiter.DEFAULT_CEILING_DB;
     limiter.limiter.threshold.value = ceiling;
-    limiter.ceilingGain.gain.value = Analyser.dbToLinear(Math.min(0, ceiling));
+    limiter.ceilingGain.gain.value = 1;
     limiter.ceilingDb = ceiling;
   }
 
-    function disconnectNode(node) {
-      if (!node) return;
-      try {
-        node.disconnect();
-      } catch (error) {
+  function disconnectNode(node) {
+    if (!node) return;
+    try {
+      node.disconnect();
+    } catch (error) {
       // A node can already be disconnected when reconfiguring the live graph.
     }
   }
@@ -84,6 +84,7 @@
     let lastRmsDb = Analyser.MIN_DB;
     let previousInputRmsDb = Analyser.MIN_DB;
     let outputRmsDb = Analyser.MIN_DB;
+    let outputTrimHoldUntilMs = 0;
     let lastPeakDb = Analyser.MIN_DB;
     let predictedPeakDb = Analyser.MIN_DB;
     let riskLevel = "safe";
@@ -154,8 +155,32 @@
     }
 
     function cancelScheduledValues(param) {
-      if (param && typeof param.cancelScheduledValues === "function") {
+      if (!param) return;
+      if (typeof param.cancelAndHoldAtTime === "function") {
+        try {
+          param.cancelAndHoldAtTime(context.currentTime);
+          return;
+        } catch (error) {
+          // Older engines can expose the method but reject it for some params.
+        }
+      }
+      if (typeof param.cancelScheduledValues === "function") {
         param.cancelScheduledValues(context.currentTime);
+      }
+    }
+
+    function rampParamToValue(param, value, rampSeconds) {
+      if (!param) return;
+      cancelScheduledValues(param);
+      if (typeof param.setValueAtTime === "function") {
+        param.setValueAtTime(param.value, context.currentTime);
+      }
+      if (typeof param.linearRampToValueAtTime === "function") {
+        param.linearRampToValueAtTime(value, context.currentTime + rampSeconds);
+      } else if (typeof param.setTargetAtTime === "function") {
+        param.setTargetAtTime(value, context.currentTime, Math.max(0.006, rampSeconds));
+      } else {
+        param.value = value;
       }
     }
 
@@ -218,12 +243,22 @@
       return measuredOutputRmsDb > Analyser.MIN_DB + 1 ? measuredOutputRmsDb : estimatedOutputRmsDb;
     }
 
-    function resetOutputTrim(timeConstant) {
+    function resetOutputTrim(timeConstant, snap) {
       currentOutputTrimDb = 0;
       if (outputTrimGain) {
-        cancelScheduledValues(outputTrimGain.gain);
-        outputTrimGain.gain.setTargetAtTime(1, context.currentTime, timeConstant);
+        if (snap) {
+          rampParamToValue(outputTrimGain.gain, 1, 0.012);
+        } else {
+          cancelScheduledValues(outputTrimGain.gain);
+          outputTrimGain.gain.setTargetAtTime(1, context.currentTime, timeConstant);
+        }
       }
+    }
+
+    function duckTransitionOutput(now, shouldDuck) {
+      if (!processingEnabled || !wetGain || !shouldDuck) return;
+      rampParamToValue(wetGain.gain, 0.03, 0.006);
+      wetGain.gain.setTargetAtTime(1, now + 0.028, 0.04);
     }
 
     function handleLevelJump(nextRmsDb) {
@@ -239,7 +274,8 @@
       const inputJumpDb = Math.abs(nextRmsDb - previousInputRmsDb);
       previousInputRmsDb = nextRmsDb;
       if (inputJumpDb >= 12) {
-        resetOutputTrim(0.012);
+        resetOutputTrim(0.012, true);
+        outputTrimHoldUntilMs = context.currentTime * 1000 + 900;
         return true;
       }
       return false;
@@ -252,9 +288,10 @@
       }
 
       const correctionDb = profile.targetRmsDb - measuredOutputRmsDb;
+      const correctionStepDb = Analyser.clamp(correctionDb * 0.35, -2.5, 2.5);
       const targetTrimDb = Math.abs(correctionDb) < 0.12
         ? currentOutputTrimDb
-        : Analyser.clamp(currentOutputTrimDb + correctionDb, -12, 6);
+        : Analyser.clamp(currentOutputTrimDb + correctionStepDb, -12, 6);
       const reducing = targetTrimDb < currentOutputTrimDb;
       const timeConstant = reducing ? Math.max(25, profile.attackMs) : Math.max(220, profile.releaseMs * 0.45);
       currentOutputTrimDb = smoothGainDb(
@@ -288,8 +325,14 @@
             maxReductionDb: profile.maxReductionDb
           })
         : 0;
+      const predictedOutputBeforeSmoothingDb = lastRmsDb + currentGainDb + currentOutputTrimDb;
+      const outputWouldOvershoot = processingEnabled &&
+        predictedOutputBeforeSmoothingDb > profile.targetRmsDb + 1.2;
+      const shouldDuckTransition = processingEnabled &&
+        (levelJumped || outputWouldOvershoot) &&
+        targetGainDb < currentGainDb - 1;
 
-      currentGainDb = levelJumped
+      currentGainDb = levelJumped || outputWouldOvershoot
         ? targetGainDb
         : smoothGainDb(
             currentGainDb,
@@ -299,16 +342,24 @@
             profile.releaseMs
           );
 
+      duckTransitionOutput(now, shouldDuckTransition);
       const linearGain = Analyser.dbToLinear(currentGainDb);
-      if (levelJumped) {
-        cancelScheduledValues(autoGain.gain);
-        autoGain.gain.setValueAtTime(linearGain, context.currentTime);
+      if (levelJumped || outputWouldOvershoot) {
+        rampParamToValue(autoGain.gain, linearGain, 0.012);
       } else {
         autoGain.gain.setTargetAtTime(linearGain, context.currentTime, 0.035);
       }
       outputRmsDb = readOutputRmsDb();
-      updateOutputTrim(outputRmsDb, elapsedMs);
-      outputRmsDb = readOutputRmsDb();
+      if (now * 1000 < outputTrimHoldUntilMs) {
+        resetOutputTrim(0.012, true);
+        currentGainDb = targetGainDb;
+        const heldLinearGain = Analyser.dbToLinear(currentGainDb);
+        rampParamToValue(autoGain.gain, heldLinearGain, 0.012);
+        outputRmsDb = getEstimatedOutputRmsDb();
+      } else {
+        updateOutputTrim(outputRmsDb, elapsedMs);
+        outputRmsDb = readOutputRmsDb();
+      }
 
       predictedPeakDb = processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;
       const wasRisky = riskLevel === "risky";
@@ -338,7 +389,7 @@
         lastContainedPeakAt = now * 1000;
       }
 
-      report(riskLevel === "risky" && !wasRisky);
+      report((levelJumped || outputWouldOvershoot) || (riskLevel === "risky" && !wasRisky));
 
       if (root.requestAnimationFrame) {
         rafId = root.requestAnimationFrame(step);
@@ -383,6 +434,7 @@
         currentGainDb = 0;
         previousInputRmsDb = Analyser.MIN_DB;
         resetOutputTrim(0.04);
+        outputTrimHoldUntilMs = 0;
         outputRmsDb = lastRmsDb;
         predictedPeakDb = lastPeakDb;
         riskLevel = "safe";

@@ -23,7 +23,7 @@
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.08;
-    ceilingGain.gain.value = Analyser.dbToLinear(Math.min(0, ceiling));
+    ceilingGain.gain.value = 1;
 
     limiter.connect(ceilingGain);
 
