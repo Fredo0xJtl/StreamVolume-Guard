@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <!-- Local scenarios for checking volume jumps, peaks, and diagnostics. -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>StreamVolume Guard - Test Page</title>
+    <style>
+      :root {
+        font-family: Inter, Segoe UI, system-ui, sans-serif;
+        color: #17202a;
+        background: #f7f8fa;
+      }
+
+      body {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 32px 18px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 24px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      p {
+        color: #56616f;
+        line-height: 1.5;
+      }
+
+      .panel {
+        display: grid;
+        gap: 14px;
+        margin-top: 20px;
+        padding: 18px;
+        border: 1px solid #dde2e7;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .demo-box {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+        border: 1px solid #c8d0d8;
+        border-radius: 8px;
+        background: #f7faf8;
+      }
+
+      .demo-box p {
+        margin: 0;
+      }
+
+      .live-results {
+        border-color: #b7d7c8;
+        background: #f3faf6;
+      }
+
+      .live-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 10px;
+      }
+
+      .live-metric {
+        display: grid;
+        gap: 4px;
+        padding: 10px;
+        border: 1px solid #d3ddd7;
+        border-radius: 6px;
+        background: #ffffff;
+      }
+
+      .live-metric span {
+        color: #56616f;
+        font-size: 13px;
+      }
+
+      .live-metric strong {
+        color: #17202a;
+        font-size: 18px;
+      }
+
+      button {
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid #17202a;
+        border-radius: 6px;
+        background: #17202a;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+      }
+
+      button.danger {
+        background: #a23224;
+        border-color: #a23224;
+      }
+
+      audio {
+        width: 100%;
+      }
+
+      code {
+        color: #17202a;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>StreamVolume Guard - Test Page</h1>
+    <p>
+      Cette page crée un vrai fichier audio WAV local dans un élément <code>&lt;audio&gt;</code>.
+      Pour éviter les permissions <code>file://</code>, lance-la de préférence avec
+      <code>node tests/start-local-server.js</code>.
+    </p>
+
+    <div class="panel">
+      <audio id="testAudio" controls></audio>
+      <audio id="rawDemoAudio" data-stream-volume-guard-bypass="true" hidden></audio>
+
+      <div id="beforeAfterDemo" class="demo-box">
+        <h2>Démo avant / après</h2>
+        <p>
+          Compare les mêmes niveaux bruts sans puis avec l'extension active. C'est le test le
+          plus rapide pour vérifier l'intérêt avant un live.
+        </p>
+        <div class="buttons">
+          <button id="beforeDemoButton" type="button">Avant brut</button>
+          <button id="afterDemoButton" type="button">Avec extension</button>
+        </div>
+        <p id="demoStatus">prêt pour la comparaison</p>
+      </div>
+
+      <div class="buttons">
+        <button id="startButton" type="button">Démarrer</button>
+        <button id="quietButton" type="button">Son faible</button>
+        <button id="loudButton" type="button">Son fort</button>
+        <button id="veryLoudButton" class="danger" type="button">Son très fort</button>
+        <button id="pulseButton" type="button">Alternance</button>
+        <button id="stopButton" type="button">Stop</button>
+      </div>
+      <p id="status">prêt</p>
+      <p>
+        Cette page crée trois niveaux précis : faible à -63.0 dB, fort à -43.0 dB, puis très fort à -3.0 dB.
+        Le très fort est volontairement beaucoup plus haut que le fort pour que l'écart soit net à l'oreille.
+      </p>
+
+      <div id="extensionResults" class="demo-box live-results">
+        <h2>Résultats extension</h2>
+        <p id="extensionState">Extension non détectée sur cet onglet.</p>
+        <div class="live-grid">
+          <div class="live-metric">
+            <span>Cible</span>
+            <strong id="extensionTarget">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Gain</span>
+            <strong id="extensionGain">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Boost max</span>
+            <strong id="extensionMaxBoost">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>RMS brut</span>
+            <strong id="extensionRms">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Sortie estimée</span>
+            <strong id="extensionOutputRms">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Risque</span>
+            <strong id="extensionRisk">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Médias</span>
+            <strong id="extensionMedia">--</strong>
+          </div>
+          <div class="live-metric">
+            <span>Pics contenus</span>
+            <strong id="extensionPeaks">--</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const audio = document.getElementById("testAudio");
+      const rawAudio = document.getElementById("rawDemoAudio");
+      const status = document.getElementById("status");
+      const extensionState = document.getElementById("extensionState");
+      const extensionTarget = document.getElementById("extensionTarget");
+      const extensionGain = document.getElementById("extensionGain");
+      const extensionMaxBoost = document.getElementById("extensionMaxBoost");
+      const extensionRms = document.getElementById("extensionRms");
+      const extensionOutputRms = document.getElementById("extensionOutputRms");
+      const extensionRisk = document.getElementById("extensionRisk");
+      const extensionMedia = document.getElementById("extensionMedia");
+      const extensionPeaks = document.getElementById("extensionPeaks");
+      const TEST_TONE_SECONDS = 8;
+      const PULSE_INTERVAL_MS = 8000;
+      const DEMO_STEP_MS = 8000;
+      const QUIET_AMPLITUDE = 0.001;
+      const LOUD_AMPLITUDE = 0.01001186529700907;
+      const VERY_LOUD_AMPLITUDE = 1;
+      const currentUrls = new Map();
+      let pulseTimer;
+      let demoTimer;
+      let countdownTimer;
+
+      function createSineWaveBlob(frequency, amplitude, durationSeconds) {
+        const sampleRate = 44100;
+        const sampleCount = sampleRate * durationSeconds;
+        const bytesPerSample = 2;
+        const dataSize = sampleCount * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        writeAscii(view, 0, "RIFF");
+        view.setUint32(4, 36 + dataSize, true);
+        writeAscii(view, 8, "WAVE");
+        writeAscii(view, 12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * bytesPerSample, true);
+        view.setUint16(32, bytesPerSample, true);
+        view.setUint16(34, 16, true);
+        writeAscii(view, 36, "data");
+        view.setUint32(40, dataSize, true);
+
+        for (let index = 0; index < sampleCount; index += 1) {
+          const sample = Math.sin((2 * Math.PI * frequency * index) / sampleRate);
+          const value = Math.max(-1, Math.min(1, sample * amplitude));
+          view.setInt16(44 + index * bytesPerSample, value * 32767, true);
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      function writeAscii(view, offset, text) {
+        for (let index = 0; index < text.length; index += 1) {
+          view.setUint8(offset + index, text.charCodeAt(index));
+        }
+      }
+
+      function formatDb(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${number.toFixed(1)} dB` : "--";
+      }
+
+      function updateExtensionResults(nextStatus) {
+        extensionState.textContent = nextStatus.excluded
+          ? "Extension active, mais domaine exclu"
+          : nextStatus.enabled
+            ? "Extension active sur cet onglet"
+            : "Extension détectée, traitement désactivé";
+        extensionTarget.textContent = formatDb(nextStatus.targetRmsDb);
+        extensionGain.textContent = formatDb(nextStatus.gainDb);
+        extensionMaxBoost.textContent = formatDb(nextStatus.maxBoostDb);
+        extensionRms.textContent = formatDb(nextStatus.rmsDb);
+        extensionOutputRms.textContent = formatDb(nextStatus.outputRmsDb);
+        extensionRisk.textContent = nextStatus.riskLevel || "--";
+        extensionMedia.textContent = `${nextStatus.mediaProcessed || 0}/${nextStatus.mediaDetected || 0}`;
+        extensionPeaks.textContent = String(nextStatus.containedPeakCount || 0);
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window) return;
+        const data = event.data;
+        if (!data || data.type !== "WLG_TEST_PAGE_STATUS" || !data.status) return;
+        updateExtensionResults(data.status);
+      });
+
+      function stopMedia(media) {
+        media.pause();
+        media.removeAttribute("src");
+        media.load();
+      }
+
+      function releaseMediaUrl(media) {
+        const currentUrl = currentUrls.get(media);
+        if (!currentUrl) return;
+        URL.revokeObjectURL(currentUrl);
+        currentUrls.delete(media);
+      }
+
+      async function playLevel(media, amplitude, label, keepPulse) {
+        if (!keepPulse) {
+          clearInterval(pulseTimer);
+          clearInterval(demoTimer);
+          clearInterval(countdownTimer);
+        }
+        const otherMedia = media === audio ? rawAudio : audio;
+        stopMedia(otherMedia);
+        releaseMediaUrl(otherMedia);
+        stopMedia(media);
+        releaseMediaUrl(media);
+        const nextUrl = URL.createObjectURL(createSineWaveBlob(440, amplitude, TEST_TONE_SECONDS));
+        currentUrls.set(media, nextUrl);
+        media.src = nextUrl;
+        media.loop = true;
+        media.volume = 1;
+        status.textContent = label;
+
+        try {
+          await media.play();
+        } catch (error) {
+          status.textContent = `${label} - lecture bloquée, clique à nouveau`;
+          console.warn("StreamVolume Guard test audio playback was blocked", error);
+        }
+      }
+
+      async function playDemoSequence(media, sequence, introLabel) {
+        clearInterval(pulseTimer);
+        clearInterval(demoTimer);
+        clearInterval(countdownTimer);
+        let index = 0;
+
+        async function playNextStep() {
+          const step = sequence[index % sequence.length];
+          index += 1;
+          await playLevel(media, step.amplitude, step.label, true);
+          document.getElementById("demoStatus").textContent = step.label;
+        }
+
+        document.getElementById("demoStatus").textContent = introLabel;
+        await playNextStep();
+        demoTimer = setInterval(() => {
+          playNextStep();
+        }, DEMO_STEP_MS);
+      }
+
+      async function start() {
+        await playLevel(audio, LOUD_AMPLITUDE, "son fort");
+      }
+
+
+      document.getElementById("startButton").addEventListener("click", start);
+      document.getElementById("beforeDemoButton").addEventListener("click", () => {
+        playDemoSequence(rawAudio, [
+          { amplitude: QUIET_AMPLITUDE, label: "avant brut - son faible net" },
+          { amplitude: LOUD_AMPLITUDE, label: "avant brut - son fort net" },
+          { amplitude: VERY_LOUD_AMPLITUDE, label: "avant brut - son très fort plein niveau" }
+        ], "démo avant brut");
+      });
+      document.getElementById("afterDemoButton").addEventListener("click", () => {
+        playDemoSequence(audio, [
+          { amplitude: QUIET_AMPLITUDE, label: "après extension - même son faible brut" },
+          { amplitude: LOUD_AMPLITUDE, label: "après extension - même son fort brut" },
+          { amplitude: VERY_LOUD_AMPLITUDE, label: "après extension - même son très fort brut" }
+        ], "démo avec extension active");
+      });
+      document.getElementById("quietButton").addEventListener("click", () => playLevel(audio, QUIET_AMPLITUDE, "son faible"));
+      document.getElementById("loudButton").addEventListener("click", () => playLevel(audio, LOUD_AMPLITUDE, "son fort"));
+      document.getElementById("veryLoudButton").addEventListener("click", () => {
+        playLevel(audio, VERY_LOUD_AMPLITUDE, "son très fort - le gain doit chuter vite");
+      });
+      document.getElementById("pulseButton").addEventListener("click", async () => {
+        clearInterval(pulseTimer);
+        clearInterval(demoTimer);
+        clearInterval(countdownTimer);
+        const alternationSequence = [
+          { amplitude: QUIET_AMPLITUDE, label: "son faible" },
+          { amplitude: LOUD_AMPLITUDE, label: "son fort" },
+          { amplitude: VERY_LOUD_AMPLITUDE, label: "son très fort" }
+        ];
+        let alternationIndex = 0;
+        let currentAlternationLabel = "";
+        let alternationStepStartedAt = 0;
+
+        function updateAlternationCountdown() {
+          const remainingMs = Math.max(0, PULSE_INTERVAL_MS - (Date.now() - alternationStepStartedAt));
+          const remainingSeconds = Math.ceil(remainingMs / 1000);
+          status.textContent = `${currentAlternationLabel} - attendre ${remainingSeconds} s`;
+        }
+
+        async function playNextAlternationStep() {
+          const step = alternationSequence[alternationIndex % alternationSequence.length];
+          alternationIndex += 1;
+          currentAlternationLabel = step.label;
+          alternationStepStartedAt = Date.now();
+          await playLevel(audio, step.amplitude, `${step.label} - attendre 8 s`, true);
+          updateAlternationCountdown();
+        }
+
+        pulseTimer = setInterval(() => {
+          playNextAlternationStep();
+        }, PULSE_INTERVAL_MS);
+        countdownTimer = setInterval(updateAlternationCountdown, 250);
+        status.textContent = "alternance active - chaque palier dure 8 s";
+        await playNextAlternationStep();
+      });
+      document.getElementById("stopButton").addEventListener("click", () => {
+        clearInterval(pulseTimer);
+        clearInterval(demoTimer);
+        clearInterval(countdownTimer);
+        stopMedia(audio);
+        stopMedia(rawAudio);
+        releaseMediaUrl(audio);
+        releaseMediaUrl(rawAudio);
+        status.textContent = "stop";
+      });
+    </script>
+  </body>
+</html>

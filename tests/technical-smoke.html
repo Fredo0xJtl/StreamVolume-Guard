@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>StreamVolume Guard Technical Smoke</title>
+  </head>
+  <body>
+    <audio id="smokeAudio" controls></audio>
+    <div id="extensionTarget">--</div>
+    <div id="extensionOutputRms">--</div>
+
+    <script>
+      window.__wlgStorage = {};
+      window.chrome = {
+        runtime: {
+          lastError: null,
+          onMessage: {
+            addListener() {}
+          }
+        },
+        storage: {
+          local: {
+            get(keys, callback) {
+              if (Array.isArray(keys)) {
+                const result = {};
+                keys.forEach((key) => {
+                  result[key] = window.__wlgStorage[key];
+                });
+                callback(result);
+                return;
+              }
+              if (typeof keys === "string") {
+                callback({ [keys]: window.__wlgStorage[keys] });
+                return;
+              }
+              callback({ ...window.__wlgStorage });
+            },
+            set(values, callback) {
+              Object.assign(window.__wlgStorage, values);
+              if (callback) callback();
+            },
+            remove(keys, callback) {
+              const list = Array.isArray(keys) ? keys : [keys];
+              list.forEach((key) => delete window.__wlgStorage[key]);
+              if (callback) callback();
+            }
+          }
+        }
+      };
+    </script>
+
+    <script src="../storage/settings.js"></script>
+    <script src="../license/capabilities.js"></script>
+    <script src="../audio/analyser.js"></script>
+    <script src="../audio/limiter.js"></script>
+    <script src="../audio/stream-status.js"></script>
+    <script src="../audio/normalizer.js"></script>
+    <script src="../content.js"></script>
+
+    <script>
+      let objectUrl;
+      const QUIET_AMPLITUDE = 0.001;
+      const LOUD_AMPLITUDE = 0.01001186529700907;
+      const VERY_LOUD_AMPLITUDE = 1;
+
+      function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function waitFor(predicate, description, timeoutMs = 5000) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          const value = await predicate();
+          if (value) return value;
+          await wait(80);
+        }
+        throw new Error(`Timed out waiting for ${description}`);
+      }
+
+      async function collectSettledOutputStats(durationMs) {
+        const startedAt = Date.now();
+        const samples = [];
+        while (Date.now() - startedAt < durationMs) {
+          const status = window.StreamVolumeGuard.Content.getStatus();
+          if (Number.isFinite(status.outputRmsDb)) {
+            samples.push(status);
+          }
+          await wait(120);
+        }
+
+        if (!samples.length) {
+          throw new Error("No settled output samples were collected");
+        }
+
+        const outputValues = samples.map((status) => status.outputRmsDb);
+        const averageOutputRmsDb = outputValues.reduce((sum, value) => sum + value, 0) / outputValues.length;
+        return {
+          averageOutputRmsDb: Number(averageOutputRmsDb.toFixed(2)),
+          minOutputRmsDb: Number(Math.min(...outputValues).toFixed(2)),
+          maxOutputRmsDb: Number(Math.max(...outputValues).toFixed(2)),
+          outputRangeDb: Number((Math.max(...outputValues) - Math.min(...outputValues)).toFixed(2)),
+          samples: samples.length
+        };
+      }
+
+      async function ensureAudioElement() {
+        return playSmokeAudio(0.9, 2);
+      }
+
+      async function playSmokeAudio(amplitude, durationSeconds) {
+        const audio = document.getElementById("smokeAudio");
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
+
+        objectUrl = URL.createObjectURL(createSineWaveBlob(440, amplitude, durationSeconds || 8));
+        audio.src = objectUrl;
+        audio.loop = true;
+        audio.volume = 1;
+        await audio.play();
+        return audio;
+      }
+
+      function createSineWaveBlob(frequency, amplitude, durationSeconds) {
+        const sampleRate = 44100;
+        const sampleCount = sampleRate * durationSeconds;
+        const bytesPerSample = 2;
+        const blockAlign = bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = sampleCount * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        writeAscii(view, 0, "RIFF");
+        view.setUint32(4, 36 + dataSize, true);
+        writeAscii(view, 8, "WAVE");
+        writeAscii(view, 12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, 16, true);
+        writeAscii(view, 36, "data");
+        view.setUint32(40, dataSize, true);
+
+        for (let index = 0; index < sampleCount; index += 1) {
+          const sample = Math.sin((2 * Math.PI * frequency * index) / sampleRate);
+          const value = Math.max(-1, Math.min(1, sample * amplitude));
+          view.setInt16(44 + index * bytesPerSample, value * 32767, true);
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      function writeAscii(view, offset, text) {
+        for (let index = 0; index < text.length; index += 1) {
+          view.setUint8(offset + index, text.charCodeAt(index));
+        }
+      }
+
+      function formatDb(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${number.toFixed(1)} dB` : "--";
+      }
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.type !== "WLG_TEST_PAGE_STATUS" || !data.status) return;
+        document.getElementById("extensionTarget").textContent = formatDb(data.status.targetRmsDb);
+        document.getElementById("extensionOutputRms").textContent = formatDb(data.status.outputRmsDb);
+      });
+
+      async function runStreamVolumeSmokeTest() {
+        try {
+          document.title = "StreamVolume Guard - Test Page";
+          await ensureAudioElement();
+
+          const WLG = window.StreamVolumeGuard;
+          window.__wlgStorage[WLG.Settings.SETTINGS_KEY] = {
+            schemaVersion: 3,
+            enabled: true,
+            activeProfile: "stream",
+            targetRmsDb: -21,
+            maxBoostDb: 12,
+            maxReductionDb: -24,
+            excludedDomains: [],
+            autoDomains: []
+          };
+          const migratedSettings = await WLG.Settings.getSettings();
+          if (migratedSettings.maxBoostDb !== 48) {
+            throw new Error(`Stored low max boost was not migrated: ${migratedSettings.maxBoostDb}`);
+          }
+
+          await WLG.Settings.saveSettings({
+            enabled: true,
+            activeProfile: "stream",
+            targetRmsDb: -21,
+            maxBoostDb: 12,
+            maxReductionDb: -24,
+            excludedDomains: [],
+            autoDomains: []
+          });
+
+          await WLG.Content.setEnabled(true, "smoke");
+
+          const processed = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return status.mediaProcessed === 1 && status.mediaDetected >= 1 ? status : null;
+          }, "one processed media element");
+
+          document.getElementById("smokeAudio").volume = 1;
+
+          const loudStatus = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return status.gainDb < -1 ? status : null;
+          }, "negative gain on loud input", 7000);
+
+          const beforeDoubleScan = WLG.Content.getStatus().mediaProcessed;
+          await WLG.Content.rescan();
+          await WLG.Content.rescan();
+          const afterDoubleScan = WLG.Content.getStatus().mediaProcessed;
+
+          await WLG.Settings.saveSettings({
+            enabled: true,
+            activeProfile: "night",
+            targetRmsDb: -24,
+            excludedDomains: [],
+            autoDomains: []
+          });
+          await WLG.Content.rescan();
+          const profileRefreshStatus = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return status.mediaProcessed === 1 && status.activeProfile === "night" ? status : null;
+          }, "rebuilt pipeline after profile change", 5000);
+          await wait(450);
+          const profileAfterReport = WLG.Content.getStatus();
+
+          await WLG.Settings.saveSettings({
+            enabled: true,
+            activeProfile: "night",
+            targetRmsDb: -14,
+            excludedDomains: [],
+            autoDomains: []
+          });
+          await WLG.Content.rescan();
+          const liveTargetStatus = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return status.mediaProcessed === 1 && status.targetRmsDb === -14 ? status : null;
+          }, "live target loudness refresh", 5000);
+          const liveTargetGainStatus = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return status.targetRmsDb === -14 &&
+              status.gainDb > profileAfterReport.gainDb + 4 &&
+              status.outputRmsDb > -15.5 &&
+              status.outputRmsDb < -12.5
+              ? status
+              : null;
+          }, "audible gain change after target loudness refresh", 1200);
+          const pageDomTarget = await waitFor(() => {
+            const value = document.getElementById("extensionTarget").textContent;
+            return value === "-14.0 dB" ? value : null;
+          }, "page test target DOM refresh", 5000);
+          const pageDomOutput = await waitFor(() => {
+            const value = document.getElementById("extensionOutputRms").textContent;
+            return value !== "--" && value !== formatDb(profileAfterReport.outputRmsDb) ? value : null;
+          }, "page test output RMS DOM refresh", 5000);
+
+          await WLG.Settings.saveSettings({
+            enabled: true,
+            activeProfile: "stream",
+            targetRmsDb: -21,
+            maxBoostDb: 48,
+            maxReductionDb: -24,
+            excludedDomains: [],
+            autoDomains: []
+          });
+          await WLG.Content.rescan();
+
+          const equalizedOutputs = [];
+          const equalizationLevels = [
+            { name: "quiet", amplitude: QUIET_AMPLITUDE, expectedRmsDb: -63, minGainDb: 30, maxGainDb: 48 },
+            { name: "loud", amplitude: LOUD_AMPLITUDE, expectedRmsDb: -43, minGainDb: 18, maxGainDb: 34 },
+            { name: "veryLoud", amplitude: VERY_LOUD_AMPLITUDE, expectedRmsDb: -3, minGainDb: -24, maxGainDb: -8 }
+          ];
+
+          for (const level of equalizationLevels) {
+            await playSmokeAudio(level.amplitude, 8);
+            const levelStatus = await waitFor(() => {
+              const status = WLG.Content.getStatus();
+              const outputDeltaDb = Math.abs(status.outputRmsDb - status.targetRmsDb);
+              const inputMatchesLevel = Math.abs(status.rmsDb - level.expectedRmsDb) <= 3.5;
+              const gainMatchesLevel = status.gainDb >= level.minGainDb && status.gainDb <= level.maxGainDb;
+
+              return status.mediaProcessed === 1 &&
+                status.targetRmsDb === -21 &&
+                inputMatchesLevel &&
+                gainMatchesLevel &&
+                status.outputRmsDb > -21.7 &&
+                status.outputRmsDb < -20.3 &&
+                outputDeltaDb <= 0.35
+                ? status
+                : null;
+            }, `${level.name} output near target`, 10000);
+            await wait(2200);
+            const settledStats = await collectSettledOutputStats(1800);
+            const settledDeltaDb = Math.abs(settledStats.averageOutputRmsDb - levelStatus.targetRmsDb);
+            if (settledDeltaDb > 0.35 || settledStats.outputRangeDb > 0.6) {
+              throw new Error(
+                `${level.name} output is not stable enough: avg=${settledStats.averageOutputRmsDb} dB range=${settledStats.outputRangeDb} dB`
+              );
+            }
+
+            equalizedOutputs.push({
+              name: level.name,
+              rmsDb: levelStatus.rmsDb,
+              gainDb: levelStatus.gainDb,
+              outputRmsDb: levelStatus.outputRmsDb,
+              deltaDb: Number(Math.abs(levelStatus.outputRmsDb - levelStatus.targetRmsDb).toFixed(2)),
+              settledStats
+            });
+          }
+
+          const outputValues = equalizedOutputs.map((entry) => entry.outputRmsDb);
+          const equalizedOutputSpreadDb = Number((Math.max(...outputValues) - Math.min(...outputValues)).toFixed(2));
+          if (equalizedOutputSpreadDb > 0.7) {
+            throw new Error(`Processed test levels are not equalized enough: ${equalizedOutputSpreadDb} dB`);
+          }
+          const settledAverageValues = equalizedOutputs.map((entry) => entry.settledStats.averageOutputRmsDb);
+          const settledAverageSpreadDb = Number((Math.max(...settledAverageValues) - Math.min(...settledAverageValues)).toFixed(2));
+          if (settledAverageSpreadDb > 0.35) {
+            throw new Error(
+              `Processed test levels drift apart while listening: ${settledAverageSpreadDb} dB ` +
+              JSON.stringify(equalizedOutputs)
+            );
+          }
+
+          await playSmokeAudio(VERY_LOUD_AMPLITUDE, 8);
+          await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            return Math.abs(status.rmsDb - -3) <= 3.5 &&
+              status.outputRmsDb > -21.7 &&
+              status.outputRmsDb < -20.3
+              ? status
+              : null;
+          }, "very loud level settled before quiet jump", 10000);
+
+          const quietAfterVeryLoudStartedAt = Date.now();
+          await playSmokeAudio(QUIET_AMPLITUDE, 8);
+          const quietAfterVeryLoudStatus = await waitFor(() => {
+            const status = WLG.Content.getStatus();
+            const outputDeltaDb = Math.abs(status.outputRmsDb - status.targetRmsDb);
+            return Math.abs(status.rmsDb - -63) <= 3.5 &&
+              status.gainDb > 30 &&
+              status.outputRmsDb > -21.7 &&
+              status.outputRmsDb < -20.3 &&
+              outputDeltaDb <= 0.35
+              ? status
+              : null;
+          }, "quiet output recovers after very loud level", 3500);
+          const quietAfterVeryLoudSettleMs = Date.now() - quietAfterVeryLoudStartedAt;
+
+          await WLG.Settings.saveSettings({
+            enabled: true,
+            excludedDomains: ["127.0.0.1"]
+          });
+          const excludedStatus = await WLG.Content.setEnabled(true, "smoke");
+
+          return {
+            ok: true,
+            mediaDetected: processed.mediaDetected,
+            mediaProcessed: afterDoubleScan,
+            lowBoostMigrationWorks: migratedSettings.maxBoostDb === 48,
+            loudGainDb: loudStatus.gainDb,
+            loudRmsDb: loudStatus.rmsDb,
+            doubleProcessStable: beforeDoubleScan === 1 && afterDoubleScan === 1,
+            profileRefreshWorks: profileRefreshStatus.activeProfile === "night" && profileAfterReport.activeProfile === "night",
+            liveTargetRefreshWorks: liveTargetStatus.targetRmsDb === -14,
+            liveTargetGainRefreshWorks: liveTargetGainStatus.gainDb > profileAfterReport.gainDb + 4,
+            pageDomTargetRefreshWorks: pageDomTarget === "-14.0 dB",
+            pageDomOutputRefreshWorks: pageDomOutput !== "--",
+            pageDomTarget,
+            pageDomOutput,
+            equalizedOutputSpreadDb,
+            settledAverageSpreadDb,
+            equalizedOutputs,
+            quietAfterVeryLoudSettleMs,
+            quietAfterVeryLoudStatus,
+            liveTargetStatus,
+            liveTargetGainStatus,
+            profileAfterReport,
+            exclusionWorks: excludedStatus.excluded === true && excludedStatus.enabled === false,
+            excludedStatus
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error.message,
+            status: window.StreamVolumeGuard && window.StreamVolumeGuard.Content
+              ? window.StreamVolumeGuard.Content.getStatus()
+              : null
+          };
+        }
+      }
+
+      window.runStreamVolumeSmokeTest = runStreamVolumeSmokeTest;
+    </script>
+  </body>
+</html>

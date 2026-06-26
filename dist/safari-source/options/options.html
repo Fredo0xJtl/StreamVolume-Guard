@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <!-- Settings surface for profiles, streamer diagnostics, and exclusion lists. -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Options - StreamVolume Guard</title>
+    <link rel="stylesheet" href="options.css">
+    <script src="../storage/settings.js" defer></script>
+    <script src="../license/capabilities.js" defer></script>
+    <script src="options.js" defer></script>
+  </head>
+  <body>
+    <header class="options-header">
+      <div class="options-brand">
+        <img class="options-logo" src="../assets/logo.svg" alt="">
+        <div>
+          <h1>StreamVolume Guard</h1>
+          <p>Guard Signal pour streamers</p>
+        </div>
+      </div>
+      <span id="saveState">prêt</span>
+    </header>
+
+    <main>
+      <form id="settingsForm">
+        <section class="panel">
+          <h2>Audio</h2>
+          <div class="grid">
+            <label class="option-field">
+              <span>Profil</span>
+              <span class="field-description" data-i18n="optionsProfileDescription">
+                Choisit le comportement audio appliqué par défaut.
+              </span>
+              <select id="activeProfile"></select>
+            </label>
+            <label class="option-field help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpTargetRms" aria-label="Aide">?</button>
+              <span class="field-heading">
+                <span>Cible RMS dB</span>
+                <span class="warning-badge" data-warning-for="targetRmsDb">!</span>
+              </span>
+              <span class="field-description" data-i18n="optionsTargetDescription">
+                Niveau moyen visé : plus haut sonne plus fort, plus bas sonne plus calme.
+              </span>
+              <input id="targetRmsDb" type="number" min="-36" max="-8" step="0.5">
+            </label>
+            <label class="option-field help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpMaxBoost" aria-label="Aide">?</button>
+              <span class="field-heading">
+                <span>Boost max dB</span>
+                <span class="warning-badge" data-warning-for="maxBoostDb">!</span>
+              </span>
+              <span class="field-description" data-i18n="optionsBoostDescription">
+                Limite la remontée des contenus trop faibles.
+              </span>
+              <input id="maxBoostDb" type="number" min="0" max="48" step="1">
+            </label>
+            <label class="option-field help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpMaxReduction" aria-label="Aide">?</button>
+              <span>Réduction max dB</span>
+              <span class="field-description" data-i18n="optionsReductionDescription">
+                Limite la baisse appliquée aux contenus trop forts.
+              </span>
+              <input id="maxReductionDb" type="number" min="-48" max="0" step="1">
+            </label>
+          </div>
+          <div class="target-volume-panel">
+            <div class="section-heading">
+              <div>
+                <h2 data-i18n="targetVolumeTitle">Volume moyen voulu</h2>
+                <p class="section-description" data-i18n="targetVolumeDescription">
+                  Ajuste la cible moyenne de l'extension avec une écoute locale rapide.
+                </p>
+              </div>
+              <strong id="targetRmsDisplay">-21.0 dB</strong>
+            </div>
+            <div class="target-volume-slider">
+              <span data-i18n="targetVolumeQuiet">Plus calme</span>
+              <input id="targetRmsSlider" type="range" min="-36" max="-14" step="0.5">
+              <span data-i18n="targetVolumeLoud">Plus fort</span>
+            </div>
+            <div class="target-preview-actions">
+              <button id="playTargetPreviewButton" type="button" data-i18n="targetVolumePlay">Écouter</button>
+              <button id="stopTargetPreviewButton" type="button" data-i18n="targetVolumeStop">Stop</button>
+              <p data-i18n="targetVolumePreviewNote">
+                Son local généré par le navigateur pour régler le volume moyen avant un live.
+              </p>
+            </div>
+          </div>
+          <div class="checks">
+            <label class="check-option">
+              <input id="enabled" type="checkbox">
+              <span>Normalisation active</span>
+            </label>
+            <label class="check-option help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpCompressor" aria-label="Aide">?</button>
+              <input id="compressorEnabled" type="checkbox">
+              <span>Compresseur doux</span>
+              <span class="warning-badge" data-warning-for="compressorEnabled">!</span>
+            </label>
+            <label class="check-option help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpLimiter" aria-label="Aide">?</button>
+              <input id="limiterEnabled" type="checkbox">
+              <span>Limiteur de sécurité</span>
+              <span class="warning-badge" data-warning-for="limiterEnabled">!</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel platform-profiles">
+          <div>
+            <h2 data-i18n="platformProfilesTitle">Profils par plateforme</h2>
+            <p class="section-description" data-i18n="platformProfilesDescription">
+              Vérifie le profil appliqué aux plateformes fréquentes et retire les réglages personnalisés si besoin.
+            </p>
+          </div>
+          <div id="platformProfilesList" class="platform-profiles-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Domaines</h2>
+          <div class="columns">
+            <label class="option-field help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpAutoDomains" aria-label="Aide">?</button>
+              <span>Activation automatique</span>
+              <span class="field-description" data-i18n="optionsAutoDomainsDescription">
+                Un domaine par ligne pour activer l'extension sans repasser par la popup.
+              </span>
+              <textarea id="autoDomains" rows="8" spellcheck="false"></textarea>
+            </label>
+            <label class="option-field help-anchor">
+              <button class="help-button" type="button" data-help-i18n="helpExcludedDomains" aria-label="Aide">?</button>
+              <span class="field-heading">
+                <span>Exclusions</span>
+                <span class="warning-badge" data-warning-for="excludedDomains">!</span>
+              </span>
+              <span class="field-description" data-i18n="optionsExcludedDomainsDescription">
+                Domaines à ne jamais traiter, même si l'extension est active.
+              </span>
+              <textarea id="excludedDomains" rows="8" spellcheck="false"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel help-anchor capabilities-section">
+          <button class="help-button" type="button" data-help-i18n="helpCapabilities" aria-label="Aide">?</button>
+          <h2>Capacités</h2>
+          <p class="section-description" data-i18n="optionsCapabilitiesDescription">
+            Résume ce qui est actif dans cette version et ce qui reste prévu pour plus tard.
+          </p>
+          <ul id="capabilitiesList"></ul>
+        </section>
+
+        <section class="panel diagnostics-export">
+          <div class="section-heading">
+            <h2 data-i18n="optionsDiagnosticsTitle">Diagnostic local</h2>
+            <span data-i18n="optionsDiagnosticsPrivacy">zéro tracking</span>
+          </div>
+          <p data-i18n="optionsDiagnosticsDescription">
+            Génère un fichier JSON local à envoyer manuellement avec un rapport de bug.
+          </p>
+          <div class="diagnostic-actions">
+            <button id="exportDiagnosticsButton" type="button" data-i18n="optionsDiagnosticsExport">
+              Exporter le diagnostic JSON
+            </button>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button id="applySettingsButton" type="submit" data-i18n="optionsApplyIdle">Appliquer les réglages</button>
+          <button id="resetButton" type="button">Réinitialiser</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
