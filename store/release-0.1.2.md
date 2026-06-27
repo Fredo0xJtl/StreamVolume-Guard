@@ -14,6 +14,7 @@ Version publique de test pour StreamVolume Guard, pensée pour les streamers qui
 
 ## Fichiers à utiliser
 
+- Projet complet : `streamvolume-guard-project-0.1.2.zip`
 - Chrome, Brave, Edge desktop : `streamvolume-guard-chromium-0.1.2.zip`
 - Firefox desktop : `streamvolume-guard-firefox-0.1.2.zip`
 - Firefox Android : `streamvolume-guard-firefox-android-0.1.2.zip`
@@ -37,6 +38,12 @@ Firefox :
 3. Ouvrir `about:debugging#/runtime/this-firefox`.
 4. Cliquer sur `Load Temporary Add-on`.
 5. Sélectionner `manifest.json`.
+
+Projet complet :
+
+1. Télécharger `streamvolume-guard-project-0.1.2.zip`.
+2. Décompresser le fichier.
+3. Utiliser le code source, la documentation, la page de test et les dossiers `dist/` inclus.
 
 ## Notes importantes
 

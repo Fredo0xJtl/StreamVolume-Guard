@@ -84,6 +84,8 @@ Tous les réglages restent locaux. Il n'y a pas de compte utilisateur, pas de sy
 
 Quand une release GitHub est disponible, préfère les fichiers `.zip` de la release : ils contiennent directement le build adapté au navigateur.
 
+La release fournit aussi un zip du projet complet, par exemple `streamvolume-guard-project-0.1.2.zip`, pour récupérer le code source, la documentation, la page de test et les builds `dist/` dans une seule archive.
+
 ## Installation Dans Chrome Ou Brave
 
 1. Ouvre `chrome://extensions`.
