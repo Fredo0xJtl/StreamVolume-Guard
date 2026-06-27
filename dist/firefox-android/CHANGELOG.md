@@ -15,6 +15,7 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 - Export diagnostic enrichi avec une synthèse streamer exploitable, sans URL complète ni titre de page.
 - Ajout d'un indicateur de qualité dans l'export diagnostic pour savoir si le fichier est exploitable ou incomplet.
 - Ajout d'un test streamer guidé dans la page locale pour valider rapidement faible, fort et très fort avant un live.
+- Ajout de la page de test et des guides testeurs essentiels dans les distributions publiques.
 - Profils par plateforme clarifiés dans les options avec badge recommandé/personnalisé et sélection plus explicite.
 
 ## [0.1.3] - 2026-06-27

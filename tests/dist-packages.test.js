@@ -33,6 +33,11 @@ const requiredFiles = [
   "manifest.json",
   "README.md",
   "CHANGELOG.md",
+  "test-page.html",
+  "docs/bug-report-template.md",
+  "docs/cross-browser-deployment.md",
+  "docs/streamer-quickstart-60s.md",
+  "docs/tester-checklist.md",
   "_locales/en/messages.json",
   "_locales/fr/messages.json",
   "assets/icons/icon16.png",
@@ -84,13 +89,19 @@ function walkFiles(directoryPath) {
 }
 
 function assertNoDevFolders(targetRoot) {
-  for (const folder of ["dist", "docs", "tests", "tools", ".git", ".codex", ".agents", ".docs"]) {
+  for (const folder of ["dist", "tests", "tools", ".git", ".codex", ".agents", ".docs"]) {
     assert.equal(
       fs.existsSync(path.join(targetRoot, folder)),
       false,
       `${path.basename(targetRoot)} should not include ${folder}`
     );
   }
+
+  assert.equal(
+    fs.existsSync(path.join(targetRoot, "docs", "future-implementation-roadmap.md")),
+    false,
+    `${path.basename(targetRoot)} should not include future implementation roadmap`
+  );
 }
 
 function assertRequiredFiles(targetRoot, targetId) {

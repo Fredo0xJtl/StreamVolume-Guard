@@ -98,19 +98,36 @@ test("buildAllTargets writes clean dist folders with target manifests", () => {
     for (const target of TARGETS) {
       const manifestPath = path.join(outputRoot, target.id, "manifest.json");
       const readmePath = path.join(outputRoot, target.id, "README.md");
+      const testPagePath = path.join(outputRoot, target.id, "test-page.html");
       const gitPath = path.join(outputRoot, target.id, ".git");
       const distPath = path.join(outputRoot, target.id, "dist");
       const testsPath = path.join(outputRoot, target.id, "tests");
       const toolsPath = path.join(outputRoot, target.id, "tools");
       const docsPath = path.join(outputRoot, target.id, "docs");
+      const roadmapPath = path.join(outputRoot, target.id, "docs", "future-implementation-roadmap.md");
+      const userDocs = [
+        "bug-report-template.md",
+        "cross-browser-deployment.md",
+        "streamer-quickstart-60s.md",
+        "tester-checklist.md"
+      ];
 
       assert.equal(fs.existsSync(manifestPath), true, `${target.id} manifest should exist`);
       assert.equal(fs.existsSync(readmePath), true, `${target.id} README should exist`);
+      assert.equal(fs.existsSync(testPagePath), true, `${target.id} test page should exist`);
+      assert.equal(fs.existsSync(docsPath), true, `${target.id} should contain user docs`);
+      for (const doc of userDocs) {
+        assert.equal(
+          fs.existsSync(path.join(docsPath, doc)),
+          true,
+          `${target.id} should include docs/${doc}`
+        );
+      }
+      assert.equal(fs.existsSync(roadmapPath), false, `${target.id} should not include the future roadmap`);
       assert.equal(fs.existsSync(gitPath), false, `${target.id} should not contain .git`);
       assert.equal(fs.existsSync(distPath), false, `${target.id} should not contain nested dist`);
       assert.equal(fs.existsSync(testsPath), false, `${target.id} should not contain tests`);
       assert.equal(fs.existsSync(toolsPath), false, `${target.id} should not contain tools`);
-      assert.equal(fs.existsSync(docsPath), false, `${target.id} should not contain docs`);
     }
   } finally {
     fs.rmSync(outputRoot, { recursive: true, force: true });

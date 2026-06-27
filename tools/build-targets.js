@@ -46,7 +46,15 @@ const PACKAGE_ENTRIES = [
   "CHANGELOG.md",
   "content.js",
   "manifest.json",
-  "README.md"
+  "README.md",
+  "test-page.html"
+];
+
+const USER_DOC_ENTRIES = [
+  "bug-report-template.md",
+  "cross-browser-deployment.md",
+  "streamer-quickstart-60s.md",
+  "tester-checklist.md"
 ];
 
 function cloneJson(value) {
@@ -155,6 +163,18 @@ function copyPackageEntries(projectRoot, targetDir, targetId) {
     } else if (stat.isFile()) {
       fs.copyFileSync(sourcePath, targetPath);
     }
+  }
+
+  const docsSourceDir = path.join(projectRoot, "docs");
+  const docsTargetDir = path.join(targetDir, "docs");
+  for (const entry of USER_DOC_ENTRIES) {
+    const sourcePath = path.join(docsSourceDir, entry);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    fs.mkdirSync(docsTargetDir, { recursive: true });
+    fs.copyFileSync(sourcePath, path.join(docsTargetDir, entry));
   }
 }
 
