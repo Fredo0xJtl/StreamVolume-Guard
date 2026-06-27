@@ -49,6 +49,46 @@
     });
   }
 
+  function setupHelpTooltips() {
+    const tooltip = document.createElement("div");
+    tooltip.className = "options-help-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    document.body.appendChild(tooltip);
+
+    function hideTooltip() {
+      tooltip.classList.remove("is-visible");
+      tooltip.textContent = "";
+    }
+
+    function showTooltip(button) {
+      const text = button.getAttribute("aria-label") || "";
+      if (!text) return;
+
+      tooltip.textContent = text;
+      tooltip.classList.add("is-visible");
+
+      const rect = button.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const left = Math.min(
+        Math.max(12, rect.left),
+        Math.max(12, root.innerWidth - tooltipRect.width - 12)
+      );
+      const top = Math.min(
+        rect.bottom + 6,
+        Math.max(12, root.innerHeight - tooltipRect.height - 12)
+      );
+
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
+    document.querySelectorAll(".help-button").forEach((button) => {
+      button.addEventListener("mouseenter", () => showTooltip(button));
+      button.addEventListener("mouseleave", hideTooltip);
+      button.addEventListener("blur", hideTooltip);
+    });
+  }
+
   function setSaveState(text) {
     elements.saveState.textContent = text;
   }
@@ -95,7 +135,7 @@
   function clampTargetRms(value) {
     const number = Number(value);
     if (!Number.isFinite(number)) return -21;
-    return Math.max(-36, Math.min(-14, number));
+    return Math.max(-48, Math.min(-15, number));
   }
 
   function syncTargetRmsControls(value) {
@@ -190,7 +230,7 @@
     const limiterEnabled = settings.limiterEnabled !== false;
     const excludedDomains = settings.excludedDomains || [];
 
-    if (targetRmsDb > -14) {
+    if (targetRmsDb >= -16) {
       warnings.push({ field: "targetRmsDb", key: "warningTargetHot", severity: "warning" });
     }
 
@@ -351,6 +391,7 @@
       gainDb: finiteNumber(source.gainDb, 0),
       rmsDb: finiteNumber(source.rmsDb, -120),
       outputRmsDb: finiteNumber(source.outputRmsDb, -120),
+      outputPeakDb: finiteNumber(source.outputPeakDb, -120),
       peakDb: finiteNumber(source.peakDb, -120),
       predictedPeakDb: finiteNumber(source.predictedPeakDb, -120),
       riskLevel: String(source.riskLevel || "safe"),
@@ -451,6 +492,7 @@
         targetRmsDb: activeTab.targetRmsDb,
         currentGainDb: activeTab.gainDb,
         outputRmsDb: activeTab.outputRmsDb,
+        outputPeakDb: activeTab.outputPeakDb,
         mediaDetected: activeTab.mediaDetected,
         mediaProcessed: activeTab.mediaProcessed,
         containedPeakCount: activeTab.containedPeakCount,
@@ -727,6 +769,7 @@
   });
 
   localizeHelpText();
+  setupHelpTooltips();
   fillProfiles();
   elements.stopTargetPreviewButton.disabled = true;
   render();

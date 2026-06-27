@@ -5,6 +5,7 @@
   const SETTINGS_KEY = "streamVolumeGuard.settings";
   const LEGACY_SETTINGS_KEY = "webloudnessGuard.settings";
   const SETTINGS_SCHEMA_VERSION = 5;
+  const RECOVERABLE_BOOST_HEADROOM_DB = 2;
 
   const PROFILES = {
     soft: {
@@ -94,8 +95,9 @@
     compressorEnabled: true,
     panicGainDb: -30
   };
-  const TARGET_RMS_MIN_DB = -36;
-  const TARGET_RMS_MAX_DB = -14;
+  const TARGET_RMS_MIN_DB = -48;
+  const TARGET_RMS_MAX_DB = -15;
+  const LOCAL_TEST_QUIET_RMS_DB = -63;
 
   let memorySettings = { ...DEFAULT_SETTINGS };
 
@@ -144,6 +146,12 @@
     }, {});
   }
 
+  function getMinimumRecoverableBoostDb(targetRmsDb) {
+    const target = Number(targetRmsDb);
+    if (!Number.isFinite(target)) return DEFAULT_SETTINGS.maxBoostDb;
+    return Math.min(48, Math.max(0, Math.ceil(target - LOCAL_TEST_QUIET_RMS_DB + RECOVERABLE_BOOST_HEADROOM_DB)));
+  }
+
   function normalizeSettings(input) {
     const stored = input && typeof input === "object" ? input : {};
     const storedSchemaVersion = Number(stored.schemaVersion) || 0;
@@ -176,6 +184,7 @@
     if (lowBoostNeedsMigration) {
       merged.maxBoostDb = DEFAULT_SETTINGS.maxBoostDb;
     }
+    merged.maxBoostDb = Math.max(merged.maxBoostDb, getMinimumRecoverableBoostDb(merged.targetRmsDb));
     merged.maxReductionDb = Math.max(-48, Math.min(0, Number(merged.maxReductionDb)));
     merged.enabled = Boolean(merged.enabled);
     merged.limiterEnabled = merged.limiterEnabled !== false;
@@ -337,6 +346,7 @@
     resetSettings,
     normalizeDomain,
     normalizeSettings,
+    getMinimumRecoverableBoostDb,
     isDomainExcluded,
     isDomainAutoEnabled,
     domainInList

@@ -287,6 +287,7 @@
       containedPeakCount: finiteNumber(currentStatus && currentStatus.containedPeakCount, 0),
       gainDb: finiteNumber(currentStatus && currentStatus.gainDb, 0),
       rmsDb: finiteNumber(currentStatus && currentStatus.rmsDb, -120),
+      outputPeakDb: finiteNumber(currentStatus && currentStatus.outputPeakDb, -120),
       peakDb: finiteNumber(currentStatus && currentStatus.peakDb, -120),
       predictedPeakDb: finiteNumber(currentStatus && currentStatus.predictedPeakDb, -120),
       lastError: currentStatus && currentStatus.lastError ? String(currentStatus.lastError).slice(0, 300) : "",

@@ -77,7 +77,7 @@
     "message": "Nuit"
   },
   "trustLocalOnly": {
-    "message": "Local uniquement"
+    "message": "Local"
   },
   "trustOpenSource": {
     "message": "Open source"
@@ -152,7 +152,7 @@
     "message": "Interrupteur global sauvegardé localement. Il autorise ou bloque la normalisation."
   },
   "helpCompressor": {
-    "message": "Compresseur doux qui calme les gros écarts avant le limiteur."
+    "message": "Emplacement réservé au compresseur doux. En V1, il reste neutre pour éviter les variations cachées du navigateur."
   },
   "helpLimiter": {
     "message": "Limiteur de sécurité qui retient les pics proches du plafond de sortie."
@@ -173,7 +173,7 @@
     "message": "Boost max au-dessus de +12 dB : risque de bruit ou de pompage."
   },
   "warningCompressorOff": {
-    "message": "Compresseur coupé : les écarts de volume peuvent devenir plus brusques."
+    "message": "Compresseur désactivé : en V1, le gain automatique et le limiteur restent les protections principales."
   },
   "warningLimiterOff": {
     "message": "Limiteur coupé : les pics peuvent clipper ou surprendre le live."
@@ -341,7 +341,7 @@
     "message": "Volume moyen voulu"
   },
   "targetVolumeDescription": {
-    "message": "Ajuste la cible moyenne de l'extension avec une écoute locale rapide."
+    "message": "Ajuste la cible moyenne de l'extension avec une écoute locale rapide. La limite haute reste récupérable pour les sons très faibles."
   },
   "targetVolumeQuiet": {
     "message": "Plus calme"

@@ -16,12 +16,6 @@ Pourquoi cette version existe : valider une normalisation audio locale, open sou
 
 Voir `CHANGELOG.md` pour comprendre rapidement ce qui a changé et pourquoi.
 
-Notes de release prêtes à publier :
-
-```text
-store/release-0.1.3.md
-```
-
 ## Compatibilité Actuelle
 
 StreamVolume Guard cible d'abord les navigateurs Chromium desktop (navigateurs de bureau basés sur Chromium) comme Chrome et Brave, mais le projet sait générer des builds séparés pour Firefox, Firefox Android et une source Safari.
@@ -429,17 +423,6 @@ node --check options/options.js
 ```
 
 Aucune installation de package n'est nécessaire.
-
-Avant de publier une version, mets à jour `manifest.json`, `CHANGELOG.md` et le bloc `Dernière Version` du README.
-
-Pour publier une release GitHub depuis la ligne de commande, GitHub CLI doit être connecté :
-
-```powershell
-gh auth login
-```
-
-Puis créer les archives locales depuis les dossiers `dist/` avant publication. Les archives `.zip` restent ignorées par Git pour éviter de polluer l'historique, mais elles peuvent être attachées à une release GitHub.
-
 
 `tools/build-targets.js` génère les dossiers `dist/chromium`, `dist/firefox`, `dist/firefox-android` et `dist/safari-source` sans dépendance externe.
 

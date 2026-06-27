@@ -17,7 +17,26 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 - Ajout d'un test streamer guidé dans la page locale pour valider rapidement faible, fort et très fort avant un live.
 - Ajout de la page de test et des guides testeurs essentiels dans les distributions publiques.
 - Clarification du README pour guider les débutants vers les fichiers `.zip` de la release GitHub.
+- Refonte de la page Options en tableau de bord streamer plus lisible et plus intuitif.
+- Refonte visuelle de la page de test locale pour reprendre le même design que la page Options.
+- Badges de confiance de la popup compactés et libellé `Local` simplifié.
+- Alignement centré des badges de confiance en haut de la popup.
+- Badges de confiance élargis avec cadre ajusté à leur largeur réelle.
+- Ajout de la mesure `Peak OBS estimé` sur la page de test et dans les diagnostics, pour comparer les niveaux vus dans OBS.
+- Verrouillage du critère d'égalisation streamer : écart RMS max `0.5 dB` et écart Peak OBS max `1.5 dB` après stabilisation.
+- Accélération du rattrapage des sons très faibles pour qu'ils rejoignent plus vite le niveau des sons forts et très forts.
+- Protection contre les réglages `Boost max dB` trop bas : le boost minimum est relevé selon le volume moyen voulu pour éviter qu'un son faible reste bloqué sous les autres.
+- Plafond du `Volume moyen voulu` ramené à `-15 dB RMS`, car une cible plus forte n'est pas récupérable pour le son faible de test avec le boost max disponible.
+- Libellé de la page de test clarifié : `Moyenne RMS traitée` affiche la moyenne autour de `-21 dB`, tandis que `Peak OBS estimé` doit rester autour de `-18 dB`.
+- Ajout d'une marge contrôlée au boost récupérable et d'un trim post-chaîne plafonné, pour aligner le son faible avec les sons fort et très fort sans dépassement audible dans OBS.
+- Analyse de sortie rendue plus réactive pour éviter que le correcteur compense un niveau obsolète après un changement très fort/faible.
+- Clarification des textes du compresseur : en V1, le compresseur Web Audio natif reste neutre pour éviter les variations cachées du navigateur.
+- Rattrapage plus rapide des contenus web réalistes après compression, pour éviter qu'un son fort ou très fort reste perçu trop faible en condition OBS réelle.
+- Rattrapage du son faible après un son très fort rendu plus direct : le niveau revient autour de `-21 dB RMS` / `-18 dB Peak OBS estimé` en environ une seconde dans le smoke navigateur.
+- Capteur `Peak OBS estimé` stabilisé pendant les transitions pour éviter d'afficher un pic obsolète au moment où la page change de niveau audio.
 - Profils par plateforme clarifiés dans les options avec badge recommandé/personnalisé et sélection plus explicite.
+- Plage du `Volume moyen voulu` ajustée de `-48 dB` à `-15 dB` et champ de saisie clavier déplacé dans le bloc du slider.
+- Logo de la page de test aligné sur l'icône PNG officielle de l'extension pour garantir son affichage dans les builds distribués.
 
 ## [0.1.3] - 2026-06-27
 

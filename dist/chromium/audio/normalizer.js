@@ -28,16 +28,18 @@
   function smoothGainDb(currentGainDb, targetGainDb, elapsedMs, attackMs, releaseMs) {
     const reducing = targetGainDb < currentGainDb;
     const gapDb = Math.abs(targetGainDb - currentGainDb);
-    const boostCatchupMs = !reducing && gapDb > 24 ? 260 : releaseMs;
+    const boostCatchupMs = !reducing
+      ? (gapDb > 24 ? 90 : currentGainDb > 12 && gapDb > 6 ? 220 : releaseMs)
+      : releaseMs;
     const timeConstant = Math.max(1, reducing ? attackMs : boostCatchupMs);
     const alpha = 1 - Math.exp(-Math.max(0, elapsedMs) / timeConstant);
     return currentGainDb + (targetGainDb - currentGainDb) * alpha;
   }
 
   function configureCompressor(compressor, profile) {
-    compressor.threshold.value = profile.compressorThresholdDb;
-    compressor.knee.value = profile.compressorKneeDb;
-    compressor.ratio.value = profile.compressorRatio;
+    compressor.threshold.value = 0;
+    compressor.knee.value = 0;
+    compressor.ratio.value = 1;
     compressor.attack.value = Math.max(0.003, profile.attackMs / 1000);
     compressor.release.value = Math.max(0.05, profile.releaseMs / 1000);
   }
@@ -90,6 +92,7 @@
     let lastRmsDb = Analyser.MIN_DB;
     let previousInputRmsDb = Analyser.MIN_DB;
     let outputRmsDb = Analyser.MIN_DB;
+    let outputPeakDb = Analyser.MIN_DB;
     let outputTrimHoldUntilMs = 0;
     let preferEstimatedOutputUntilMs = 0;
     let lastPeakDb = Analyser.MIN_DB;
@@ -202,6 +205,7 @@
       outputTrimGain = context.createGain();
       outputGain = context.createGain();
       outputAnalyser = Analyser.createAnalyserNode(context, 2048);
+      outputAnalyser.smoothingTimeConstant = 0.15;
       compressor = context.createDynamicsCompressor();
       limiter = Limiter.createSafetyLimiter(context, profile.limiterCeilingDb);
 
@@ -225,6 +229,7 @@
           gainDb: Number(currentGainDb.toFixed(2)),
           rmsDb: Number(lastRmsDb.toFixed(2)),
           outputRmsDb: Number(outputRmsDb.toFixed(2)),
+          outputPeakDb: Number(outputPeakDb.toFixed(2)),
           peakDb: Number(lastPeakDb.toFixed(2)),
           predictedPeakDb: Number(predictedPeakDb.toFixed(2)),
           riskLevel,
@@ -242,12 +247,25 @@
       return processingEnabled ? lastRmsDb + currentGainDb + currentOutputTrimDb : lastRmsDb;
     }
 
+    function getEstimatedOutputPeakDb() {
+      return processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;
+    }
+
     function readOutputRmsDb() {
       const estimatedOutputRmsDb = getEstimatedOutputRmsDb();
       if (!outputAnalyser) return estimatedOutputRmsDb;
 
       const measuredOutputRmsDb = Analyser.getAnalyserRmsDb(outputAnalyser, outputBuffer);
       return measuredOutputRmsDb > Analyser.MIN_DB + 1 ? measuredOutputRmsDb : estimatedOutputRmsDb;
+    }
+
+    function readOutputPeakDb() {
+      const estimatedOutputPeakDb = getEstimatedOutputPeakDb();
+      if (!outputAnalyser) return estimatedOutputPeakDb;
+
+      outputAnalyser.getFloatTimeDomainData(outputBuffer);
+      const measuredOutputPeakDb = Analyser.calculatePeakDb(outputBuffer);
+      return measuredOutputPeakDb > Analyser.MIN_DB + 1 ? measuredOutputPeakDb : estimatedOutputPeakDb;
     }
 
     function getTransitionOutputRmsDb() {
@@ -296,19 +314,40 @@
       return false;
     }
 
-    function updateOutputTrim(measuredOutputRmsDb, elapsedMs) {
+    function updateOutputTrim(measuredOutputRmsDb, elapsedMs, targetGainDb) {
       if (!processingEnabled || !outputTrimGain || measuredOutputRmsDb <= Analyser.MIN_DB + 1) {
         resetOutputTrim(0.04);
         return;
       }
 
-      const correctionDb = profile.targetRmsDb - measuredOutputRmsDb;
-      const correctionStepDb = Analyser.clamp(correctionDb * 0.35, -2.5, 2.5);
-      const targetTrimDb = Math.abs(correctionDb) < OUTPUT_TRIM_DEADBAND_DB
+      const estimatedOutputRmsDb = getEstimatedOutputRmsDb();
+      const highBoostSignal = targetGainDb >= 24;
+      const controlOutputRmsDb = highBoostSignal
+        ? Math.max(measuredOutputRmsDb, estimatedOutputRmsDb - 0.9)
+        : measuredOutputRmsDb;
+      const correctionDb = profile.targetRmsDb - controlOutputRmsDb;
+      const remainingBoostHeadroomDb = Math.max(0, profile.maxBoostDb - targetGainDb);
+      const allowUpwardTrim = !highBoostSignal || remainingBoostHeadroomDb >= 1.5;
+      const maxTrimDb = highBoostSignal ? Math.min(0.9, remainingBoostHeadroomDb) : 3;
+      const minTrimDb = targetGainDb > 0 && targetGainDb < 24 ? -1.5 : -12;
+      const correctionStepDb = correctionDb > 0 && allowUpwardTrim
+        ? Analyser.clamp(correctionDb * 0.55, 0, 4)
+        : correctionDb < 0
+          ? Analyser.clamp(correctionDb * 0.35, -2.5, 0)
+          : 0;
+      let targetTrimDb = Math.abs(correctionDb) < OUTPUT_TRIM_DEADBAND_DB
         ? currentOutputTrimDb
-        : Analyser.clamp(currentOutputTrimDb + correctionStepDb, -12, 6);
+        : Analyser.clamp(currentOutputTrimDb + correctionStepDb, minTrimDb, maxTrimDb);
+      if (!allowUpwardTrim && targetTrimDb > 0) {
+        targetTrimDb = 0;
+      }
       const reducing = targetTrimDb < currentOutputTrimDb;
-      const timeConstant = reducing ? Math.max(25, profile.attackMs) : Math.max(220, profile.releaseMs * 0.45);
+      const outputTooWeak = correctionDb > 1;
+      const timeConstant = reducing
+        ? Math.max(25, profile.attackMs)
+        : outputTooWeak && allowUpwardTrim
+          ? (highBoostSignal ? 220 : 120)
+          : Math.max(180, profile.releaseMs * 0.35);
       currentOutputTrimDb = smoothGainDb(
         currentOutputTrimDb,
         targetTrimDb,
@@ -343,11 +382,16 @@
       const predictedOutputBeforeSmoothingDb = lastRmsDb + currentGainDb + currentOutputTrimDb;
       const outputWouldOvershoot = processingEnabled &&
         predictedOutputBeforeSmoothingDb > profile.targetRmsDb + 1.2;
+      const safeBoostSnap = processingEnabled &&
+        levelJumped &&
+        targetGainDb > currentGainDb + 18 &&
+        lastRmsDb < profile.targetRmsDb - 18;
       const shouldDuckTransition = processingEnabled &&
         (levelJumped || outputWouldOvershoot) &&
         targetGainDb < currentGainDb - 1;
       const shouldSnapGain = outputWouldOvershoot ||
-        (levelJumped && targetGainDb < currentGainDb - 1);
+        (levelJumped && targetGainDb < currentGainDb - 1) ||
+        safeBoostSnap;
       if (shouldSnapGain) {
         preferEstimatedOutputUntilMs = Math.max(
           preferEstimatedOutputUntilMs,
@@ -373,19 +417,12 @@
         autoGain.gain.setTargetAtTime(linearGain, context.currentTime, 0.035);
       }
       const measuredOutputRmsDb = readOutputRmsDb();
+      const measuredOutputPeakDb = readOutputPeakDb();
       const preferEstimatedOutput = now * 1000 < preferEstimatedOutputUntilMs;
       outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : measuredOutputRmsDb;
+      outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : measuredOutputPeakDb;
       if (now * 1000 < outputTrimHoldUntilMs) {
         resetOutputTrim(0.012, true);
-        currentGainDb = shouldSnapGain
-          ? targetGainDb
-          : smoothGainDb(
-              currentGainDb,
-              targetGainDb,
-              elapsedMs,
-              profile.attackMs,
-              profile.releaseMs
-            );
         const heldLinearGain = Analyser.dbToLinear(currentGainDb);
         if (shouldSnapGain) {
           rampParamToValue(autoGain.gain, heldLinearGain, 0.012);
@@ -393,9 +430,11 @@
           autoGain.gain.setTargetAtTime(heldLinearGain, context.currentTime, 0.035);
         }
         outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : getEstimatedOutputRmsDb();
+        outputPeakDb = getEstimatedOutputPeakDb();
       } else {
-        updateOutputTrim(measuredOutputRmsDb, elapsedMs);
+        updateOutputTrim(measuredOutputRmsDb, elapsedMs, targetGainDb);
         outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : readOutputRmsDb();
+        outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : readOutputPeakDb();
       }
 
       predictedPeakDb = processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;
@@ -473,6 +512,7 @@
         resetOutputTrim(0.04);
         outputTrimHoldUntilMs = 0;
         outputRmsDb = lastRmsDb;
+        outputPeakDb = lastPeakDb;
         predictedPeakDb = lastPeakDb;
         riskLevel = "safe";
         riskUntilMs = 0;
@@ -514,6 +554,7 @@
           });
           resetOutputTrim(0.02);
           outputRmsDb = getEstimatedOutputRmsDb();
+          outputPeakDb = lastPeakDb + currentGainDb + currentOutputTrimDb;
           predictedPeakDb = lastPeakDb + currentGainDb;
           autoGain.gain.setTargetAtTime(Analyser.dbToLinear(currentGainDb), context.currentTime, 0.02);
         }
@@ -527,6 +568,7 @@
         gainDb: Number(currentGainDb.toFixed(2)),
         rmsDb: Number(lastRmsDb.toFixed(2)),
         outputRmsDb: Number(outputRmsDb.toFixed(2)),
+        outputPeakDb: Number(outputPeakDb.toFixed(2)),
         peakDb: Number(lastPeakDb.toFixed(2)),
         predictedPeakDb: Number(predictedPeakDb.toFixed(2)),
         riskLevel,

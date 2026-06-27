@@ -77,7 +77,7 @@
     "message": "Night"
   },
   "trustLocalOnly": {
-    "message": "Local only"
+    "message": "Local"
   },
   "trustOpenSource": {
     "message": "Open source"
@@ -152,7 +152,7 @@
     "message": "Global switch saved locally. It controls whether normalization is allowed."
   },
   "helpCompressor": {
-    "message": "Soft compressor that tames loud changes before they hit the limiter."
+    "message": "Reserved slot for the soft compressor. In V1 it stays neutral to avoid hidden browser level changes."
   },
   "helpLimiter": {
     "message": "Safety limiter that catches peaks near the output ceiling to reduce clipping risk."
@@ -173,7 +173,7 @@
     "message": "Max boost is above +12 dB and may raise noise or pumping."
   },
   "warningCompressorOff": {
-    "message": "Soft compressor is off; volume jumps can feel more abrupt."
+    "message": "Compressor is off: in V1, automatic gain and the limiter remain the main protections."
   },
   "warningLimiterOff": {
     "message": "Safety limiter is off; sudden peaks can clip or surprise viewers."
@@ -341,7 +341,7 @@
     "message": "Target average volume"
   },
   "targetVolumeDescription": {
-    "message": "Adjust the extension's average target with a quick local listening preview."
+    "message": "Adjust the extension's average target with a quick local listening preview. The upper limit stays recoverable for very quiet sounds."
   },
   "targetVolumeQuiet": {
     "message": "Quieter"

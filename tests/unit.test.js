@@ -114,11 +114,18 @@ test("legacy settings migrate max boost so the test page remains recoverable", (
     schemaVersion: 5,
     maxBoostDb: 12
   });
+  const weakToneRecoverableAtMinus22Peak = WLG.Settings.normalizeSettings({
+    schemaVersion: 5,
+    targetRmsDb: -25,
+    maxBoostDb: 25
+  });
 
   assert.equal(WLG.Settings.SETTINGS_SCHEMA_VERSION, 5);
   assert.equal(oldSchemaMigrated.maxBoostDb, 48);
   assert.equal(previousSchemaMigrated.maxBoostDb, 48);
-  assert.equal(currentSchemaManualLowering.maxBoostDb, 12);
+  assert.equal(currentSchemaManualLowering.maxBoostDb, 44);
+  assert.equal(weakToneRecoverableAtMinus22Peak.maxBoostDb, 40);
+  assert.equal(WLG.Settings.getMinimumRecoverableBoostDb(-25), 40);
 });
 
 test("legacy default stream loudness migrates to the calmer streamer target", () => {
@@ -197,6 +204,15 @@ test("stream profile catches up quickly on extreme quiet test-page jumps", () =>
   assert.ok(recoveredGain < 44.5, "Extreme quiet content should still be smoothed, not snapped instantly");
 });
 
+test("stream profile catches up moderate real-world boosts before they sound weak", () => {
+  const WLG = loadCore();
+  const stream = WLG.Settings.getProfile("stream");
+  const recoveredGain = WLG.Normalizer.smoothGainDb(20, 27, 500, stream.attackMs, stream.releaseMs);
+
+  assert.ok(recoveredGain > 25.5, "Moderate dynamic content should not stay several dB too weak for half a second");
+  assert.ok(recoveredGain < 27, "Moderate dynamic content should still be smoothed, not snapped instantly");
+});
+
 
 test("target gain clamps boost and reduction", () => {
   const WLG = loadCore();
@@ -248,6 +264,16 @@ test("safety limiter does not attenuate the whole signal by default", () => {
   assert.doesNotMatch(normalizerSource, /limiter\.ceilingGain\.gain\.value = Analyser\.dbToLinear/);
 });
 
+test("native compressor stays neutral to avoid hidden browser makeup gain", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+
+  assert.match(normalizerSource, /compressor\.threshold\.value = 0;/);
+  assert.match(normalizerSource, /compressor\.knee\.value = 0;/);
+  assert.match(normalizerSource, /compressor\.ratio\.value = 1;/);
+  assert.doesNotMatch(normalizerSource, /compressor\.threshold\.value = profile\.compressorThresholdDb/);
+  assert.doesNotMatch(normalizerSource, /compressor\.ratio\.value = profile\.compressorRatio/);
+});
+
 test("platform profiles recommend streamer-first defaults", () => {
   const WLG = loadCore();
   const settings = WLG.Settings.normalizeSettings({});
@@ -285,9 +311,28 @@ test("domain profile selection keeps the user target loudness", () => {
 test("settings clamps target loudness at the shared safe bounds", () => {
   const WLG = loadCore();
 
-  assert.equal(WLG.Settings.normalizeSettings({ targetRmsDb: -80 }).targetRmsDb, -36);
-  assert.equal(WLG.Settings.normalizeSettings({ targetRmsDb: -5 }).targetRmsDb, -14);
+  assert.equal(WLG.Settings.normalizeSettings({ targetRmsDb: -80 }).targetRmsDb, -48);
+  assert.equal(WLG.Settings.normalizeSettings({ targetRmsDb: -5 }).targetRmsDb, -15);
   assert.equal(WLG.Settings.normalizeSettings({ targetRmsDb: -21.5 }).targetRmsDb, -21.5);
+});
+
+test("settings keep target loudness recoverable for the weak test sound", () => {
+  const WLG = loadCore();
+  const settings = WLG.Settings.normalizeSettings({
+    targetRmsDb: -10,
+    maxBoostDb: 48
+  });
+  const profile = WLG.Settings.getRuntimeProfile(settings);
+  const weakTargetGainDb = WLG.Normalizer.calculateTargetGainDb({
+    currentRmsDb: -63,
+    targetRmsDb: profile.targetRmsDb,
+    maxBoostDb: profile.maxBoostDb,
+    maxReductionDb: profile.maxReductionDb
+  });
+
+  assert.equal(profile.targetRmsDb, -15);
+  assert.equal(weakTargetGainDb, 48);
+  assert.ok(-63 + weakTargetGainDb >= profile.targetRmsDb, "weak sound must be able to reach the selected target");
 });
 
 test("content script guards concurrent media processing and resets detached markers", () => {
@@ -351,6 +396,30 @@ test("public test page uses real media blobs instead of MediaStreamDestination",
   assert.doesNotMatch(html, /createMediaStreamDestination/);
 });
 
+test("public test page uses the streamer dashboard layout", () => {
+  const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
+
+  assert.match(html, /class="test-header"/);
+  assert.match(html, /class="test-brand"/);
+  assert.match(html, /class="test-logo"/);
+  assert.match(html, /src="assets\/icons\/icon128\.png"/);
+  assert.match(html, /class="test-status"/);
+  assert.match(html, /class="test-shell"/);
+  assert.match(html, /class="test-overview"/);
+  assert.match(html, /class="overview-card overview-card-primary"/);
+  assert.match(html, /class="test-layout"/);
+  assert.match(html, /class="primary-stack"/);
+  assert.match(html, /class="sidebar-stack"/);
+  assert.match(html, /class="panel audio-control-panel"/);
+  assert.match(html, /class="panel demo-box"/);
+  assert.match(html, /class="panel demo-box live-results"/);
+  assert.match(html, /class="panel demo-box streamer-check trust-panel"/);
+  assert.match(html, /linear-gradient\(180deg, #10202c 0, #153243 92px, #eef4f6 92px/);
+  assert.doesNotMatch(html, /linear-gradient\(135deg/);
+  assert.doesNotMatch(html, /test-card/);
+  assert.doesNotMatch(html, /test-sidebar/);
+});
+
 test("browser smoke bakes test loudness into WAV data instead of element volume", () => {
   const smokeHtml = fs.readFileSync(path.join(root, "tests", "technical-smoke.html"), "utf8");
 
@@ -368,7 +437,7 @@ test("browser smoke ignores stale status samples when checking transition oversh
   assert.match(smokeHtml, /const collectAfter = startedAt \+ warmupMs;/);
   assert.match(smokeHtml, /status\.updatedAt >= collectAfter/);
   assert.match(smokeHtml, /Date\.now\(\) >= collectAfter/);
-  assert.match(smokeHtml, /earlyStats\.maxOutputRmsDb > levelStatus\.targetRmsDb \+ 1\.2/);
+  assert.match(smokeHtml, /earlyStats\.maxOutputRmsDb > levelStatus\.targetRmsDb \+ 0\.8/);
 });
 
 test("manual local server exists and README documents the recommended URL flow", () => {
@@ -740,7 +809,7 @@ test("public test page displays live extension status when available", () => {
   assert.match(html, /id="extensionRisk"/);
   assert.match(html, /id="extensionOutputRms"/);
   assert.match(html, /Boost max/);
-  assert.match(html, /Sortie estimée/);
+  assert.match(html, /Moyenne RMS traitée/);
   assert.match(html, /WLG_TEST_PAGE_STATUS/);
   assert.match(html, /addEventListener\("message"/);
   assert.match(html, /toFixed\(1\)/);
@@ -980,6 +1049,63 @@ test("content publishes safe live status only to the local test page", () => {
   assert.doesNotMatch(contentSource, /root\.postMessage\([\s\S]*,\s*"\*"\)/);
 });
 
+test("local test page exposes post-chain output peak for OBS-style validation", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+  const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
+  const popupSource = fs.readFileSync(path.join(root, "popup", "popup.js"), "utf8");
+
+  assert.match(normalizerSource, /let outputPeakDb = Analyser\.MIN_DB/);
+  assert.match(normalizerSource, /function getEstimatedOutputPeakDb\(\)/);
+  assert.match(normalizerSource, /function readOutputPeakDb\(\)/);
+  assert.match(normalizerSource, /Analyser\.calculatePeakDb\(outputBuffer\)/);
+  assert.match(normalizerSource, /outputPeakDb = preferEstimatedOutput \? getEstimatedOutputPeakDb\(\) : measuredOutputPeakDb/);
+  assert.match(normalizerSource, /outputPeakDb: Number\(outputPeakDb\.toFixed\(2\)\)/);
+  assert.match(contentSource, /outputPeakDb: state\.outputPeakDb/);
+  assert.match(contentSource, /outputPeakDb: nextState\.outputPeakDb/);
+  assert.match(html, /id="extensionOutputPeak"/);
+  assert.match(html, /Moyenne RMS traitée/);
+  assert.match(html, /const extensionOutputPeak = document\.getElementById\("extensionOutputPeak"\)/);
+  assert.match(html, /extensionOutputPeak\.textContent = formatDb\(nextStatus\.outputPeakDb\)/);
+  assert.match(popupSource, /outputPeakDb:/);
+});
+
+test("local test page and smoke test lock streamer equalization quality gates", () => {
+  const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
+  const smokeHtml = fs.readFileSync(path.join(root, "tests", "technical-smoke.html"), "utf8");
+  const browserSmokeSource = fs.readFileSync(path.join(root, "tests", "browser-smoke.js"), "utf8");
+
+  assert.match(html, /const QUALITY_RMS_SPREAD_DB = 0\.5;/);
+  assert.match(html, /const QUALITY_PEAK_SPREAD_DB = 1\.5;/);
+  assert.match(html, /id="extensionEqualization"/);
+  assert.match(html, /function formatEqualizationStatus\(nextStatus\)/);
+  assert.match(html, /"égalisé"/);
+  assert.match(html, /"en cours"/);
+  assert.match(smokeHtml, /const QUALITY_RMS_SPREAD_DB = 0\.5;/);
+  assert.match(smokeHtml, /const QUALITY_PEAK_SPREAD_DB = 1\.5;/);
+  assert.match(smokeHtml, /alternationEndSpreadDb > QUALITY_RMS_SPREAD_DB/);
+  assert.match(smokeHtml, /alternationEndPeakSpreadDb > QUALITY_PEAK_SPREAD_DB/);
+  assert.match(browserSmokeSource, /equalizedOutputSpreadDb <= 0\.5/);
+  assert.match(browserSmokeSource, /alternationEndSpreadDb <= 0\.5/);
+  assert.match(browserSmokeSource, /alternationEndPeakSpreadDb <= 1\.5/);
+  assert.match(smokeHtml, /const CALM_TARGET_RMS_DB = -25;/);
+  assert.match(smokeHtml, /calmTargetPeakStats/);
+  assert.match(smokeHtml, /targetRmsDb: -10/);
+  assert.match(smokeHtml, /status\.targetRmsDb === -15/);
+  assert.match(smokeHtml, /maxRecoverableTargetStats/);
+  assert.match(smokeHtml, /maxRecoverableTargetSpreadDb > QUALITY_RMS_SPREAD_DB/);
+  assert.match(smokeHtml, /function createRealWorldWaveBlob/);
+  assert.match(smokeHtml, /realWorldLevelStats/);
+  assert.match(smokeHtml, /quietAfterVeryLoudTransitionStats/);
+  assert.match(smokeHtml, /quietTransitionPeakLimitDb = -17/);
+  assert.match(browserSmokeSource, /calmTargetPeakSpreadDb <= 1/);
+  assert.match(browserSmokeSource, /calmTargetVeryLoudPeakDeltaDb <= 1/);
+  assert.match(browserSmokeSource, /maxRecoverableTargetSpreadDb <= 0\.5/);
+  assert.match(browserSmokeSource, /realWorldLevelSpreadDb <= 1/);
+  assert.match(browserSmokeSource, /realWorldVeryLoudShortfallDb <= 1/);
+  assert.match(browserSmokeSource, /quietAfterVeryLoudTransitionOvershootDb <= 0/);
+});
+
 test("normalizer measures post-chain output RMS separately from raw RMS", () => {
   const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
 
@@ -998,11 +1124,23 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
   assert.match(normalizerSource, /let outputTrimGain = null;/);
   assert.match(normalizerSource, /let currentOutputTrimDb = 0;/);
   assert.match(normalizerSource, /const OUTPUT_TRIM_DEADBAND_DB = 0\.06;/);
-  assert.match(normalizerSource, /function updateOutputTrim\(measuredOutputRmsDb, elapsedMs\)/);
+  assert.match(normalizerSource, /outputAnalyser\.smoothingTimeConstant = 0\.15;/);
+  assert.match(normalizerSource, /function updateOutputTrim\(measuredOutputRmsDb, elapsedMs, targetGainDb\)/);
   assert.match(normalizerSource, /Math\.abs\(correctionDb\) < OUTPUT_TRIM_DEADBAND_DB/);
-  assert.match(normalizerSource, /const correctionStepDb = Analyser\.clamp\(correctionDb \* 0\.35, -2\.5, 2\.5\)/);
-  assert.match(normalizerSource, /Analyser\.clamp\(currentOutputTrimDb \+ correctionStepDb, -12, 6\)/);
+  assert.match(normalizerSource, /const remainingBoostHeadroomDb = Math\.max\(0, profile\.maxBoostDb - targetGainDb\);/);
+  assert.match(normalizerSource, /const highBoostSignal = targetGainDb >= 24;/);
+  assert.match(normalizerSource, /const allowUpwardTrim = !highBoostSignal \|\| remainingBoostHeadroomDb >= 1\.5;/);
+  assert.match(normalizerSource, /const maxTrimDb = highBoostSignal \? Math\.min\(0\.9, remainingBoostHeadroomDb\) : 3;/);
+  assert.match(normalizerSource, /const minTrimDb = targetGainDb > 0 && targetGainDb < 24 \? -1\.5 : -12;/);
+  assert.match(normalizerSource, /correctionDb > 0 && allowUpwardTrim[\s\S]*Analyser\.clamp\(correctionDb \* 0\.55, 0, 4\)/);
+  assert.match(normalizerSource, /correctionDb < 0[\s\S]*Analyser\.clamp\(correctionDb \* 0\.35, -2\.5, 0\)/);
+  assert.match(normalizerSource, /Analyser\.clamp\(currentOutputTrimDb \+ correctionStepDb, minTrimDb, maxTrimDb\)/);
+  assert.match(normalizerSource, /if \(!allowUpwardTrim && targetTrimDb > 0\) \{/);
+  assert.match(normalizerSource, /targetTrimDb = 0;/);
+  assert.doesNotMatch(normalizerSource, /allowDownwardTrim/);
   assert.doesNotMatch(normalizerSource, /currentOutputTrimDb \+ correctionDb/);
+  assert.match(normalizerSource, /const outputTooWeak = correctionDb > 1;/);
+  assert.match(normalizerSource, /outputTooWeak && allowUpwardTrim[\s\S]*\? \(highBoostSignal \? 220 : 120\)/);
   assert.match(normalizerSource, /wetGain\.connect\(outputTrimGain\);[\s\S]*outputTrimGain\.connect\(outputGain\);/);
   assert.match(normalizerSource, /outputTrimGain\.gain\.setTargetAtTime/);
 });
@@ -1051,11 +1189,30 @@ test("normalizer resets stale state and snaps gain on large input level jumps", 
   assert.match(normalizerSource, /const levelJumped = handleLevelJump\(lastRmsDb\)/);
   assert.doesNotMatch(normalizerSource, /currentGainDb = levelJumped[\s\S]*\? targetGainDb/);
   assert.match(normalizerSource, /currentGainDb = shouldSnapGain[\s\S]*\? targetGainDb/);
+  assert.equal(
+    (normalizerSource.match(/currentGainDb = shouldSnapGain/g) || []).length,
+    1,
+    "current gain should be smoothed once per audio tick, even during transition hold"
+  );
   assert.match(normalizerSource, /function cancelScheduledValues\(param\)/);
   assert.match(normalizerSource, /cancelAndHoldAtTime/);
   assert.match(normalizerSource, /function rampParamToValue\(param, value, rampSeconds\)[\s\S]*cancelScheduledValues\(param\)/);
   assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
   assert.match(normalizerSource, /report\(\(levelJumped \|\| outputWouldOvershoot\) \|\|/);
+});
+
+test("normalizer catches up weak sounds quickly enough to match louder sounds by ear", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+  const smokeSource = fs.readFileSync(path.join(root, "tests", "browser-smoke.js"), "utf8");
+
+  assert.match(normalizerSource, /gapDb > 24 \? 90 : currentGainDb > 12 && gapDb > 6 \? 220 : releaseMs/);
+  assert.match(normalizerSource, /const safeBoostSnap = processingEnabled/);
+  assert.match(normalizerSource, /targetGainDb > currentGainDb \+ 18/);
+  assert.match(normalizerSource, /lastRmsDb < profile\.targetRmsDb - 18/);
+  assert.match(smokeSource, /quietAfterVeryLoudSettleMs <= 1700/);
+  assert.match(smokeSource, /quietAfterVeryLoudTransitionStats\.averageOutputRmsDb >= -21\.35/);
+  assert.match(smokeSource, /const expectedQuietPeakDb = value\.quietAfterVeryLoudStatus\.targetRmsDb \+ 3/);
+  assert.match(smokeSource, /quietPeakDeltaDb <= 1/);
 });
 
 test("normalizer de-clicks transition gain changes with short ramps", () => {
@@ -1300,6 +1457,7 @@ test("popup copied diagnostic contains actionable local-safe fields", () => {
   assert.match(js, /canCaptureTab:/);
   assert.match(js, /gainDb:/);
   assert.match(js, /rmsDb:/);
+  assert.match(js, /outputPeakDb:/);
   assert.match(js, /peakDb:/);
   assert.match(js, /predictedPeakDb:/);
   assert.match(js, /includesFullUrl:\s*false/);
@@ -1318,6 +1476,12 @@ test("popup exposes trust badges for local open-source no-tracking adoption", ()
     assert.match(html, new RegExp(`data-i18n="${key}"`), `popup should expose ${key}`);
   });
   assert.match(css, /\.trust-strip/);
+  assert.match(css, /\.trust-strip\s*{[\s\S]*display:\s*flex;/);
+  assert.match(css, /\.trust-strip\s*{[\s\S]*justify-content:\s*center;/);
+  assert.match(css, /\.trust-strip\s*{[\s\S]*width:\s*fit-content;/);
+  assert.match(css, /\.trust-strip\s*{[\s\S]*margin:\s*0 auto;/);
+  assert.match(css, /\.trust-strip span\s*{[\s\S]*width:\s*fit-content;/);
+  assert.match(css, /\.trust-strip span\s*{[\s\S]*min-width:\s*82px;/);
 
   ["en", "fr"].forEach((locale) => {
     const messages = readJson(`_locales/${locale}/messages.json`);
@@ -1326,6 +1490,8 @@ test("popup exposes trust badges for local open-source no-tracking adoption", ()
       assert.ok(messages[key].message.length > 4, `${locale}.${key} should not be empty`);
     });
   });
+  assert.equal(readJson("_locales/fr/messages.json").trustLocalOnly.message, "Local");
+  assert.equal(readJson("_locales/en/messages.json").trustLocalOnly.message, "Local");
 });
 
 test("popup and options avoid innerHTML for safer public builds", () => {
@@ -1411,23 +1577,27 @@ test("help tooltips render above inactive question mark buttons", () => {
   const popupCss = fs.readFileSync(path.join(root, "popup", "popup.css"), "utf8");
   const optionsCss = fs.readFileSync(path.join(root, "options", "options.css"), "utf8");
 
-  [popupCss, optionsCss].forEach((css) => {
-    assert.match(css, /\.help-button\s*{[\s\S]*z-index:\s*1;/);
-    assert.match(css, /\.help-button::after\s*{[\s\S]*z-index:\s*2;/);
-    assert.match(css, /\.help-button:hover,\s*\.help-button:focus-visible\s*{[\s\S]*z-index:\s*30;/);
-    assert.doesNotMatch(css, /\.help-button\s*{[\s\S]*z-index:\s*10;/);
-  });
+  assert.match(popupCss, /\.help-button\s*{[\s\S]*z-index:\s*1;/);
+  assert.match(popupCss, /\.help-button::after\s*{[\s\S]*z-index:\s*2;/);
+  assert.doesNotMatch(popupCss, /\.help-button\s*{[\s\S]*z-index:\s*10;/);
+  assert.match(popupCss, /\.help-button:hover,\s*\.help-button:focus-visible\s*{[\s\S]*z-index:\s*30;/);
+  assert.match(optionsCss, /\.help-button\s*{[\s\S]*z-index:\s*1;/);
+  assert.match(optionsCss, /\.help-button:hover\s*{[\s\S]*z-index:\s*30;/);
+  assert.match(optionsCss, /\.options-help-tooltip\s*{[\s\S]*z-index:\s*1000;/);
+  assert.doesNotMatch(optionsCss, /\.help-button::after/);
 });
 
 test("options help tooltip hitbox stays limited to the question mark button", () => {
   const optionsCss = fs.readFileSync(path.join(root, "options", "options.css"), "utf8");
+  const optionsJs = fs.readFileSync(path.join(root, "options", "options.js"), "utf8");
 
-  assert.match(optionsCss, /\.help-button::after\s*{[\s\S]*visibility:\s*hidden;/);
-  assert.match(optionsCss, /\.help-button::after\s*{[\s\S]*pointer-events:\s*none;/);
-  assert.match(
-    optionsCss,
-    /\.help-button:hover::after,\s*\.help-button:focus-visible::after\s*{[\s\S]*visibility:\s*visible;/
-  );
+  assert.match(optionsCss, /\.options-help-tooltip\s*{[\s\S]*pointer-events:\s*none;/);
+  assert.match(optionsCss, /\.options-help-tooltip\.is-visible\s*{[\s\S]*display:\s*block;/);
+  assert.match(optionsJs, /function setupHelpTooltips\(\)/);
+  assert.match(optionsJs, /button\.addEventListener\("mouseenter"/);
+  assert.match(optionsJs, /button\.addEventListener\("mouseleave", hideTooltip\)/);
+  assert.doesNotMatch(optionsCss, /\.help-button:focus-visible::after/);
+  assert.doesNotMatch(optionsCss, /\.help-button:hover::after/);
   assert.doesNotMatch(optionsCss, /\.option-field:hover\s+\.help-button::after/);
   assert.doesNotMatch(optionsCss, /\.help-anchor:hover\s+\.help-button::after/);
 });
@@ -1469,7 +1639,7 @@ test("options page keeps inline warning badges without a redundant streamer aler
   assert.match(js, /const warningText = warning \? i18n\(warning\.key, warning\.key\) : "";/);
   assert.match(js, /badge\.dataset\.warningText = warningText;/);
   assert.doesNotMatch(js, /warningsList/);
-  assert.match(js, /targetRmsDb > -14/);
+  assert.match(js, /targetRmsDb >= -16/);
   assert.match(js, /maxBoostDb > 12/);
   assert.match(js, /limiterEnabled === false/);
 });
@@ -1553,8 +1723,8 @@ test("options expose a target loudness slider with local audio preview", () => {
   ];
 
   assert.match(html, /id="targetRmsSlider"/);
-  assert.match(html, /id="targetRmsSlider" type="range" min="-36" max="-14" step="0\.5"/);
-  assert.match(html, /id="targetRmsDb" type="number" min="-36" max="-14" step="0\.5"/);
+  assert.match(html, /id="targetRmsSlider" type="range" min="-48" max="-15" step="0\.5"/);
+  assert.match(html, /id="targetRmsDb" type="number" min="-48" max="-15" step="0\.5" inputmode="decimal"/);
   assert.match(html, /id="targetRmsDisplay"/);
   assert.match(html, /id="playTargetPreviewButton"/);
   assert.match(html, /id="stopTargetPreviewButton"/);
@@ -1562,7 +1732,7 @@ test("options expose a target loudness slider with local audio preview", () => {
   assert.match(html, /Appliquer les réglages/);
   assert.match(html, /data-i18n="targetVolumeTitle"/);
   assert.match(js, /function syncTargetRmsControls/);
-  assert.match(js, /Math\.max\(-36, Math\.min\(-14, number\)\)/);
+  assert.match(js, /Math\.max\(-48, Math\.min\(-15, number\)\)/);
   assert.match(js, /function startTargetPreview/);
   assert.match(js, /function stopTargetPreview/);
   assert.match(js, /createOscillator/);
@@ -1620,6 +1790,27 @@ test("options page keeps visible guidance and no stale required controls", () =>
   assert.doesNotMatch(js, /playCalibrationTone/);
 });
 
+test("options page uses a streamer dashboard layout", () => {
+  const html = fs.readFileSync(path.join(root, "options", "options.html"), "utf8");
+  const css = fs.readFileSync(path.join(root, "options", "options.css"), "utf8");
+
+  assert.match(html, /class="settings-overview"/);
+  assert.match(html, /class="options-layout"/);
+  assert.match(html, /class="primary-stack"/);
+  assert.match(html, /class="sidebar-stack"/);
+  assert.match(html, /class="panel audio-panel"/);
+  assert.match(html, /class="panel trust-panel"/);
+  assert.match(html, /class="trust-list"/);
+  assert.match(css, /\.settings-overview/);
+  assert.match(css, /\.options-layout/);
+  assert.match(css, /\.sidebar-stack/);
+  assert.match(css, /\.audio-grid/);
+  assert.match(css, /\.trust-panel/);
+  assert.doesNotMatch(css, /\.sidebar-stack\s*{[\s\S]*position:\s*sticky/);
+  assert.match(css, /#153243 92px/);
+  assert.match(css, /#eef4f6 92px/);
+});
+
 test("options expose a local diagnostic export without sensitive page data", () => {
   const html = fs.readFileSync(path.join(root, "options", "options.html"), "utf8");
   const css = fs.readFileSync(path.join(root, "options", "options.css"), "utf8");
@@ -1638,6 +1829,7 @@ test("options expose a local diagnostic export without sensitive page data", () 
   assert.match(js, /download = `streamvolume-guard-diagnostic-/);
   assert.match(js, /includesFullUrl:\s*false/);
   assert.match(js, /includesPageTitle:\s*false/);
+  assert.match(js, /outputPeakDb:/);
   assert.doesNotMatch(js, /document\.title/);
   assert.doesNotMatch(js, /tab\.url/);
   assert.doesNotMatch(js, /status\.url/);

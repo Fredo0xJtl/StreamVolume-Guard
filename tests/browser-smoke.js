@@ -249,9 +249,33 @@ async function run() {
     assert.ok(value.liveTargetGainRefreshWorks, "Expected target loudness changes to alter the active gain.");
     assert.ok(value.pageDomTargetRefreshWorks, "Expected the test page DOM to display the refreshed target loudness.");
     assert.ok(value.pageDomOutputRefreshWorks, "Expected the test page DOM to display refreshed output RMS.");
-    assert.ok(value.equalizedOutputSpreadDb <= 0.7, "Expected quiet, loud and very loud processed test levels to stay equalized tightly.");
+    assert.ok(value.pageDomOutputPeakRefreshWorks, "Expected the test page DOM to display refreshed output peak.");
+    assert.ok(value.equalizedOutputSpreadDb <= 0.5, "Expected quiet, loud and very loud processed test levels to stay equalized tightly.");
     assert.ok(value.settledAverageSpreadDb <= 0.15, "Expected quiet, loud and very loud processed test levels to stay equalized while listening.");
-    assert.ok(value.quietAfterVeryLoudSettleMs <= 3500, "Expected quiet input to recover quickly after a very loud input.");
+    assert.ok(value.alternationEndSpreadDb <= 0.5, "Expected repeated alternation output RMS to stay close at the end of each step.");
+    assert.ok(value.alternationEndPeakSpreadDb <= 1.5, "Expected OBS-style output peaks to stay close at the end of repeated alternation steps.");
+    assert.ok(value.calmTargetPeakSpreadDb <= 1, "Expected OBS-style peaks to stay close when the target loudness is calmer.");
+    assert.ok(value.calmTargetVeryLoudPeakDeltaDb <= 1, "Expected the very loud input to stay near the calm OBS-style peak target.");
+    assert.ok(value.maxRecoverableTargetSpreadDb <= 0.5, "Expected the loudest selectable target to stay recoverable for quiet, loud and very loud inputs.");
+    assert.ok(value.realWorldLevelSpreadDb <= 1, "Expected real-world loud and very loud signals to stay close after normalization.");
+    assert.ok(value.realWorldVeryLoudShortfallDb <= 1, "Expected real-world very loud audio not to stay audibly weaker after normalization.");
+    assert.ok(value.quietAfterVeryLoudTransitionOvershootDb <= 0, "Expected quiet input not to jump audibly above the target after a very loud input.");
+    assert.ok(
+      value.quietAfterVeryLoudSettleMs <= 1700,
+      `Expected quiet input to recover quickly after a very loud input, got ${value.quietAfterVeryLoudSettleMs} ms.`
+    );
+    assert.ok(
+      value.quietAfterVeryLoudTransitionStats.averageOutputRmsDb >= -21.35,
+      `Expected quiet input not to stay perceptibly below target during recovery, got ${value.quietAfterVeryLoudTransitionStats.averageOutputRmsDb} dB.`
+    );
+    {
+      const expectedQuietPeakDb = value.quietAfterVeryLoudStatus.targetRmsDb + 3;
+      const quietPeakDeltaDb = Math.abs(value.quietAfterVeryLoudStatus.outputPeakDb - expectedQuietPeakDb);
+      assert.ok(
+        quietPeakDeltaDb <= 1,
+        `Expected quiet input to reach OBS-style peak near ${expectedQuietPeakDb} dB, got ${value.quietAfterVeryLoudStatus.outputPeakDb} dB.`
+      );
+    }
     assert.ok(value.exclusionWorks, "Expected exclusion to disable processing.");
     assert.equal(value.excludedStatus.riskLevel, "safe", "Expected excluded tab to reset streamer risk status.");
 

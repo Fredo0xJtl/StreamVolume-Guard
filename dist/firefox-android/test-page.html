@@ -7,40 +7,177 @@
     <title>StreamVolume Guard - Test Page</title>
     <style>
       :root {
+        color-scheme: light dark;
         font-family: Inter, Segoe UI, system-ui, sans-serif;
+        font-size: 15px;
+        --brand: #10202c;
+        --brand-2: #1f6f78;
+        --brand-3: #27485a;
+        --surface: #ffffff;
+        --surface-soft: #f5f8fa;
+        --line: #d7e1e8;
+        --text: #17202a;
+        --muted: #60707d;
+        --safe: #188a4d;
+        --danger: #c73333;
         color: #17202a;
-        background: #f7f8fa;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 32px 18px;
+        margin: 0;
+        color: var(--text);
+        background:
+          linear-gradient(180deg, #10202c 0, #153243 92px, #eef4f6 92px, #f7f8fa 100%);
+      }
+
+      .test-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 20px 28px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: transparent;
+        color: #f4f8fb;
+      }
+
+      .test-brand {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 12px;
+      }
+
+      .test-logo {
+        width: 40px;
+        height: 40px;
+        flex: 0 0 auto;
+      }
+
+      .test-brand p {
+        margin: 4px 0 0;
+        color: #aec1cc;
+        font-size: 12px;
+        font-weight: 700;
       }
 
       h1 {
-        margin: 0 0 10px;
-        font-size: 24px;
+        margin: 0;
+        font-size: 20px;
       }
 
       h2 {
         margin: 0;
-        font-size: 18px;
+        font-size: 15px;
       }
 
       p {
-        color: #56616f;
+        color: var(--muted);
         line-height: 1.5;
+      }
+
+      .test-status {
+        min-width: 92px;
+        padding: 5px 10px;
+        border: 1px solid #365263;
+        border-radius: 999px;
+        background: #183141;
+        color: #cde8ec;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .test-shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 20px 24px 34px;
+      }
+
+      .test-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(290px, 340px);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .primary-stack,
+      .sidebar-stack {
+        display: grid;
+        gap: 16px;
       }
 
       .panel {
         display: grid;
         gap: 14px;
-        margin-top: 20px;
         padding: 18px;
-        border: 1px solid #dde2e7;
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: #ffffff;
+        background: var(--surface);
+        box-shadow: 0 12px 30px rgba(16, 32, 44, 0.08);
+      }
+
+      .test-overview {
+        display: grid;
+        grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 1fr) auto;
+        align-items: stretch;
+        gap: 10px;
+        margin-bottom: 16px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 18px 38px rgba(0, 0, 0, 0.16);
+      }
+
+      .overview-card,
+      .overview-actions {
+        min-width: 0;
+        padding: 13px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+      }
+
+      .overview-card {
+        display: grid;
+        gap: 5px;
+      }
+
+      .overview-card-primary {
+        background: #f4fafb;
+      }
+
+      .overview-card span,
+      .section-kicker {
+        color: var(--brand-2);
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .overview-card strong {
+        color: var(--text);
+        font-size: 18px;
+        line-height: 1.15;
+      }
+
+      .overview-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.35;
+      }
+
+      .overview-actions {
+        display: grid;
+        gap: 8px;
+        min-width: 230px;
       }
 
       .buttons {
@@ -52,24 +189,29 @@
       .demo-box {
         display: grid;
         gap: 10px;
-        padding: 14px;
-        border: 1px solid #c8d0d8;
-        border-radius: 8px;
-        background: #f7faf8;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .section-description {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.35;
       }
 
       .demo-box p {
         margin: 0;
       }
 
-      .live-results {
-        border-color: #b7d7c8;
-        background: #f3faf6;
-      }
-
-      .streamer-check {
-        border-color: #bcd5dc;
-        background: #f4fafb;
+      .trust-panel {
+        background: #f9fbfc;
       }
 
       .streamer-check strong {
@@ -85,28 +227,31 @@
       .live-metric {
         display: grid;
         gap: 4px;
-        padding: 10px;
-        border: 1px solid #d3ddd7;
+        min-height: 62px;
+        padding: 10px 11px;
+        border: 1px solid var(--line);
         border-radius: 6px;
-        background: #ffffff;
+        background: var(--surface-soft);
       }
 
       .live-metric span {
-        color: #56616f;
-        font-size: 13px;
+        color: var(--brand-2);
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
       }
 
       .live-metric strong {
-        color: #17202a;
+        color: var(--text);
         font-size: 18px;
       }
 
       button {
         min-height: 38px;
         padding: 0 14px;
-        border: 1px solid #17202a;
+        border: 1px solid var(--text);
         border-radius: 6px;
-        background: #17202a;
+        background: var(--text);
         color: #ffffff;
         cursor: pointer;
         font: inherit;
@@ -114,109 +259,200 @@
       }
 
       button.danger {
-        background: #a23224;
-        border-color: #a23224;
+        background: var(--danger);
+        border-color: var(--danger);
       }
 
       audio {
         width: 100%;
+        min-height: 42px;
       }
 
       code {
-        color: #17202a;
+        color: var(--text);
         font-weight: 700;
+      }
+
+      .level-note {
+        margin: 0;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-soft);
+      }
+
+      #status,
+      #demoStatus,
+      #streamerTestResult,
+      #extensionState {
+        margin: 0;
+      }
+
+      @media (max-width: 900px) {
+        .test-header,
+        .test-shell {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .test-overview,
+        .test-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .overview-actions {
+          min-width: 0;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .test-header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .buttons {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        button {
+          width: 100%;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>StreamVolume Guard - Test Page</h1>
-    <p>
-      Cette page crée un vrai fichier audio WAV local dans un élément <code>&lt;audio&gt;</code>.
-      Pour éviter les permissions <code>file://</code>, lance-la de préférence avec
-      <code>node tests/start-local-server.js</code>.
-    </p>
+    <header class="test-header">
+      <div class="test-brand">
+        <img class="test-logo" src="assets/icons/icon128.png" alt="">
+        <div>
+          <h1>StreamVolume Guard</h1>
+          <p>Page de test audio locale</p>
+        </div>
+      </div>
+      <span class="test-status">Test local</span>
+    </header>
 
-    <div class="panel">
-      <audio id="testAudio" controls></audio>
-      <audio id="rawDemoAudio" data-stream-volume-guard-bypass="true" hidden></audio>
-
-      <div id="beforeAfterDemo" class="demo-box">
-        <h2>Démo avant / après</h2>
+    <main class="test-shell">
+      <section class="test-overview" aria-label="Résumé du test local">
+        <div class="overview-card overview-card-primary">
+          <span>Test rapide avant live</span>
+          <strong>Page de test locale</strong>
+          <p>Verifie les ecarts faible, fort et tres fort avant une session streamer.</p>
+        </div>
+        <div class="overview-card">
+          <span>Source audio</span>
+          <strong>WAV dans &lt;audio&gt;</strong>
         <p>
-          Compare les mêmes niveaux bruts sans puis avec l'extension active. C'est le test le
-          plus rapide pour vérifier l'intérêt avant un live.
+          Cette page crée un vrai fichier audio WAV local dans un élément <code>&lt;audio&gt;</code>.
+          Pour éviter les permissions <code>file://</code>, lance-la de préférence avec
+          <code>node tests/start-local-server.js</code>.
         </p>
-        <div class="buttons">
-          <button id="beforeDemoButton" type="button">Avant brut</button>
-          <button id="afterDemoButton" type="button">Avec extension</button>
         </div>
-        <p id="demoStatus">prêt pour la comparaison</p>
-      </div>
-
-      <div class="buttons">
-        <button id="startButton" type="button">Démarrer</button>
-        <button id="quietButton" type="button">Son faible</button>
-        <button id="loudButton" type="button">Son fort</button>
-        <button id="veryLoudButton" class="danger" type="button">Son très fort</button>
-        <button id="pulseButton" type="button">Alternance</button>
-        <button id="stopButton" type="button">Stop</button>
-      </div>
-      <p id="status">prêt</p>
-      <p>
-        Cette page crée trois niveaux précis : faible à -63.0 dB, fort à -43.0 dB, puis très fort autour de -4.0 dB RMS.
-        Le très fort garde environ 1 dB de marge sous le pic numérique maximum pour rester fort sans grésiller.
-      </p>
-
-      <div id="streamerReadiness" class="demo-box streamer-check">
-        <h2>Test streamer guidé</h2>
-        <p>
-          Lance les trois sons avec l'extension active et vérifie si le rendu reste proche de la cible avant un live.
-        </p>
-        <div class="buttons">
-          <button id="streamerTestButton" type="button">Tester pour live</button>
+        <div class="overview-card">
+          <span>Objectif</span>
+          <strong>Comparer le rendu</strong>
+          <p>Utilise ensuite les controles audio et les resultats extension.</p>
         </div>
-        <p id="streamerTestResult">En attente du test.</p>
-      </div>
+      </section>
 
-      <div id="extensionResults" class="demo-box live-results">
-        <h2>Résultats extension</h2>
-        <p id="extensionState">Extension non détectée sur cet onglet.</p>
-        <div class="live-grid">
-          <div class="live-metric">
-            <span>Cible</span>
-            <strong id="extensionTarget">--</strong>
+      <div class="test-layout">
+        <section class="primary-stack" aria-label="Tests audio">
+          <div id="beforeAfterDemo" class="panel demo-box">
+            <h2>Démo avant / après</h2>
+            <p>
+              Compare les mêmes niveaux bruts sans puis avec l'extension active. C'est le test le
+              plus rapide pour vérifier l'intérêt avant un live.
+            </p>
+            <div class="buttons">
+              <button id="beforeDemoButton" type="button">Avant brut</button>
+              <button id="afterDemoButton" type="button">Avec extension</button>
+            </div>
+            <p id="demoStatus">prêt pour la comparaison</p>
           </div>
-          <div class="live-metric">
-            <span>Gain</span>
-            <strong id="extensionGain">--</strong>
+
+          <div class="panel audio-control-panel">
+            <audio id="testAudio" controls></audio>
+            <audio id="rawDemoAudio" data-stream-volume-guard-bypass="true" hidden></audio>
+
+            <div class="buttons">
+              <button id="startButton" type="button">Démarrer</button>
+              <button id="quietButton" type="button">Son faible</button>
+              <button id="loudButton" type="button">Son fort</button>
+              <button id="veryLoudButton" class="danger" type="button">Son très fort</button>
+              <button id="pulseButton" type="button">Alternance</button>
+              <button id="stopButton" type="button">Stop</button>
+            </div>
+            <p id="status">prêt</p>
+            <p class="level-note">
+              Cette page crée trois niveaux précis : faible à -63.0 dB, fort à -43.0 dB, puis très fort autour de -4.0 dB RMS.
+              Le très fort garde environ 1 dB de marge sous le pic numérique maximum pour rester fort sans grésiller.
+            </p>
           </div>
-          <div class="live-metric">
-            <span>Boost max</span>
-            <strong id="extensionMaxBoost">--</strong>
+        </section>
+
+        <aside class="sidebar-stack" aria-label="État extension et préparation live">
+          <div id="extensionResults" class="panel demo-box live-results">
+            <h2>Résultats extension</h2>
+            <p id="extensionState">Extension non détectée sur cet onglet.</p>
+            <div class="live-grid">
+              <div class="live-metric">
+                <span>Cible</span>
+                <strong id="extensionTarget">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Gain</span>
+                <strong id="extensionGain">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Boost max</span>
+                <strong id="extensionMaxBoost">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>RMS brut</span>
+                <strong id="extensionRms">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Moyenne RMS traitée</span>
+                <strong id="extensionOutputRms">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Peak OBS estimé</span>
+                <strong id="extensionOutputPeak">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Égalisation</span>
+                <strong id="extensionEqualization">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Risque</span>
+                <strong id="extensionRisk">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Médias</span>
+                <strong id="extensionMedia">--</strong>
+              </div>
+              <div class="live-metric">
+                <span>Pics contenus</span>
+                <strong id="extensionPeaks">--</strong>
+              </div>
+            </div>
           </div>
-          <div class="live-metric">
-            <span>RMS brut</span>
-            <strong id="extensionRms">--</strong>
+
+          <div id="streamerReadiness" class="panel demo-box streamer-check trust-panel">
+            <h2>Test streamer guidé</h2>
+            <p>
+              Lance les trois sons avec l'extension active et vérifie si le rendu reste proche de la cible avant un live.
+            </p>
+            <div class="buttons">
+              <button id="streamerTestButton" type="button">Tester pour live</button>
+            </div>
+            <p id="streamerTestResult">En attente du test.</p>
           </div>
-          <div class="live-metric">
-            <span>Sortie estimée</span>
-            <strong id="extensionOutputRms">--</strong>
-          </div>
-          <div class="live-metric">
-            <span>Risque</span>
-            <strong id="extensionRisk">--</strong>
-          </div>
-          <div class="live-metric">
-            <span>Médias</span>
-            <strong id="extensionMedia">--</strong>
-          </div>
-          <div class="live-metric">
-            <span>Pics contenus</span>
-            <strong id="extensionPeaks">--</strong>
-          </div>
-        </div>
+        </aside>
       </div>
-    </div>
+    </main>
 
     <script>
       const audio = document.getElementById("testAudio");
@@ -228,10 +464,14 @@
       const extensionMaxBoost = document.getElementById("extensionMaxBoost");
       const extensionRms = document.getElementById("extensionRms");
       const extensionOutputRms = document.getElementById("extensionOutputRms");
+      const extensionOutputPeak = document.getElementById("extensionOutputPeak");
+      const extensionEqualization = document.getElementById("extensionEqualization");
       const extensionRisk = document.getElementById("extensionRisk");
       const extensionMedia = document.getElementById("extensionMedia");
       const extensionPeaks = document.getElementById("extensionPeaks");
       const streamerTestResult = document.getElementById("streamerTestResult");
+      const QUALITY_RMS_SPREAD_DB = 0.5;
+      const QUALITY_PEAK_SPREAD_DB = 1.5;
       const TEST_TONE_SECONDS = 10;
       const PULSE_INTERVAL_MS = 8000;
       const DEMO_STEP_MS = 8000;
@@ -316,6 +556,17 @@
         return Number.isFinite(number) ? `${number.toFixed(1)} dB` : "--";
       }
 
+      function formatEqualizationStatus(nextStatus) {
+        const outputRmsDb = Number(nextStatus.outputRmsDb);
+        const targetRmsDb = Number(nextStatus.targetRmsDb);
+        if (!nextStatus.enabled || !Number.isFinite(outputRmsDb) || !Number.isFinite(targetRmsDb)) {
+          return "--";
+        }
+
+        const deltaDb = Math.abs(outputRmsDb - targetRmsDb);
+        return deltaDb <= QUALITY_RMS_SPREAD_DB ? "égalisé" : "en cours";
+      }
+
       function updateExtensionResults(nextStatus) {
         lastExtensionStatus = nextStatus;
         extensionState.textContent = nextStatus.excluded
@@ -328,6 +579,8 @@
         extensionMaxBoost.textContent = formatDb(nextStatus.maxBoostDb);
         extensionRms.textContent = formatDb(nextStatus.rmsDb);
         extensionOutputRms.textContent = formatDb(nextStatus.outputRmsDb);
+        extensionOutputPeak.textContent = formatDb(nextStatus.outputPeakDb);
+        extensionEqualization.textContent = formatEqualizationStatus(nextStatus);
         extensionRisk.textContent = nextStatus.riskLevel || "--";
         extensionMedia.textContent = `${nextStatus.mediaProcessed || 0}/${nextStatus.mediaDetected || 0}`;
         extensionPeaks.textContent = String(nextStatus.containedPeakCount || 0);

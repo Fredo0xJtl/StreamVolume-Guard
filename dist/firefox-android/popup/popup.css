@@ -93,15 +93,20 @@ main {
 }
 
 .trust-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
   gap: 5px;
   padding: 6px;
 }
 
 .trust-strip span {
-  min-width: 0;
-  padding: 4px 5px;
+  width: fit-content;
+  min-width: 82px;
+  padding: 5px 9px;
   border: 1px solid #cfe2d6;
   border-radius: 999px;
   background: #edf8f1;
